@@ -1,0 +1,135 @@
+/* Layout concept: one graphite system for both surfaces. Marketing runs on a 1200px, 12-column grid with
+   generous section rhythm; the terminal is a 232/68px rail + 60px top bar + 12-column panel grid.
+   Tokens come from the Signal Terminal handoff (design-tokens.json + DESIGN_SPEC §3). The look is
+   deliberately dark-only: the spec makes dark the default and light terminal a phase-2 option. */
+:root {
+  color-scheme: dark;
+  /* Surfaces */
+  --canvas: #0B1016;
+  --sidebar: #0E151D;
+  --surface: #141D27;
+  --elevated: #1B2733;
+  --hover: #233242;
+  --border: #293744;
+  --border-strong: #425365;
+  --border-control: #5E7286; /* form-control outline: 3.4:1 on surface (WCAG 1.4.11) */
+  /* Text */
+  --text: #F2F6FA;
+  --text-2: #B1C0CF;
+  --text-3: #90A2B5;
+  /* Accent and semantics */
+  --accent: #46C8E5;
+  --accent-hover: #79DDF2;
+  --accent-subtle: #123847;
+  --on-accent: #061218;
+  --success: #4AD7A0;
+  --danger: #FF858B;
+  --warning: #F7C66A;
+  --info: #91B9FF;
+  --accent-bg: rgba(70, 200, 229, 0.10);
+  --success-bg: rgba(74, 215, 160, 0.10);
+  --danger-bg: rgba(255, 133, 139, 0.10);
+  --warning-bg: rgba(247, 198, 106, 0.10);
+  --info-bg: rgba(145, 185, 255, 0.10);
+  --success-line: rgba(74, 215, 160, 0.32);
+  --danger-line: rgba(255, 133, 139, 0.32);
+  --warning-line: rgba(247, 198, 106, 0.36);
+  --info-line: rgba(145, 185, 255, 0.32);
+  --accent-line: rgba(70, 200, 229, 0.36);
+  /* Data visualisation (chart-2 shifted from #B39AF7 so the pair passes a deuteranopia check, with dashes as backup) */
+  --chart-1: #5AC7EB;
+  --chart-2: #C58AF9;
+  --chart-3: #F9C56D;
+  --chart-surface: #141D27;
+  --grid: #1F2B38;
+  --spark: #6F8296;
+  --tick-flash: rgba(70, 200, 229, 0.22);
+  /* Type */
+  --font-sans: "IBM Plex Sans", Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* Shape, depth, motion */
+  --r-xs: 4px; --r-sm: 6px; --r-md: 10px; --r-lg: 14px; --r-xl: 20px; --r-pill: 9999px;
+  --shadow-elevated: 0 12px 32px rgba(0, 0, 0, 0.32);
+  --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.28);
+  --t-fast: 120ms; --t-med: 180ms; --t-slow: 240ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* Layout */
+  --gutter-l: max(16px, env(safe-area-inset-left, 0px));
+  --gutter-r: max(16px, env(safe-area-inset-right, 0px));
+  --rail: 232px;
+  --rail-collapsed: 68px;
+  --topbar: 60px;
+  --mkt-nav: 72px;
+  --row: 40px;
+}
+[data-density="compact"] { --row: 32px; }
+[data-density="comfortable"] { --row: 48px; }
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--text-2);
+  font: 400 14px/22px var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+body::before {
+  content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 60; background: var(--canvas);
+}
+#root { min-height: 100%; }
+.boot { padding: 48px var(--gutter-r) 48px var(--gutter-l); color: var(--text-3); font-family: var(--font-sans); }
+h1, h2, h3, h4 { color: var(--text); margin: 0; font-weight: 600; text-wrap: balance; }
+p { margin: 0; }
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:hover { color: var(--accent-hover); }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+img, svg { display: block; }
+.icon { flex: none; }
+ul, ol { margin: 0; padding: 0; }
+table { border-collapse: collapse; }
+kbd, code, pre { font-family: var(--font-mono); }
+::selection { background: var(--accent-subtle); color: var(--text); }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+.sr-only {
+  position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.skip-link {
+  position: fixed; left: var(--gutter-l); top: calc(env(safe-area-inset-top, 0px) + 8px); z-index: 200;
+  background: var(--accent); color: var(--on-accent); padding: 8px 14px; border-radius: var(--r-sm);
+  font-weight: 600; transform: translateY(-160%); transition: transform var(--t-fast) var(--ease); text-decoration: none;
+}
+.skip-link:focus { transform: none; color: var(--on-accent); }
+
+.mono, .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--text-3); }
+.small { font-size: 13px; line-height: 20px; }
+.micro { font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: 0.01em; }
+.label { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--text-3); }
+.eyebrow {
+  font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent);
+}
+.strong { color: var(--text); font-weight: 600; }
+.up { color: var(--success); }
+.down { color: var(--danger); }
+.nowrap { white-space: nowrap; }
+.stack { display: flex; flex-direction: column; gap: 12px; }
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.row-between { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.grow { flex: 1 1 auto; min-width: 0; }
+.divider { height: 1px; background: var(--border); border: 0; margin: 0; }
+
+@media (max-width: 767px) {
+  body { font-size: 15px; line-height: 24px; }
+  .micro { font-size: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}

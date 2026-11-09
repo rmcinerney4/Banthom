@@ -1,0 +1,56 @@
+/* ---------------------------------------------------------------- Charts */
+.chart { margin: 0; position: relative; min-width: 0; }
+.chart-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 8px; color: var(--text-2); font-size: 12px; line-height: 16px; }
+.legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.chart-stage { position: relative; width: 100%; border-radius: var(--r-sm); touch-action: pan-y; }
+.chart-stage:focus-visible { outline-offset: 4px; }
+.chart-svg { overflow: visible; }
+.chart-grid { stroke: var(--grid); stroke-width: 1; shape-rendering: crispEdges; }
+.chart-zero { stroke: var(--border-strong); }
+.chart-axis { stroke: var(--border); stroke-width: 1; shape-rendering: crispEdges; }
+.chart-tick { fill: var(--text-3); font: 500 11px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.chart-endlabel { fill: var(--text); font: 600 12px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.chart-leader { stroke: var(--text-3); stroke-width: 1; }
+.chart-gap { fill: rgba(144, 162, 181, 0.07); }
+.chart-gap-label { fill: var(--text-3); font: 500 10px/1 var(--font-sans); }
+.chart-marker line { stroke: rgba(177, 192, 207, 0.26); stroke-width: 1; }
+.chart-marker circle { fill: var(--chart-surface); stroke: var(--text-3); stroke-width: 1.25; }
+.chart-marker text { fill: var(--text-2); font: 600 10px/1 var(--font-mono); }
+.chart-marker.is-active line { stroke: var(--accent); }
+.chart-marker.is-active circle { stroke: var(--accent); }
+.chart-cross line { stroke: var(--text-3); stroke-width: 1; }
+.chart-tip {
+  position: absolute; top: 8px; z-index: 6; min-width: 190px; max-width: 270px; padding: 8px 10px; pointer-events: none;
+  border-radius: var(--r-sm); border: 1px solid var(--border-strong); background: var(--elevated); box-shadow: var(--shadow-menu);
+  font-size: 12px; line-height: 18px;
+}
+.chart-tip.is-flipped { transform: translateX(-100%); }
+.chart-tip-time { color: var(--text-3); font-size: 11px; margin-bottom: 4px; }
+.chart-tip-row { display: grid; grid-template-columns: 16px auto minmax(0, 1fr); align-items: center; gap: 6px; }
+.chart-tip-row strong { color: var(--text); font: 600 13px/20px var(--font-mono); font-variant-numeric: tabular-nums; }
+.chart-tip-row span { color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chart-tip-meta { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); color: var(--text-3); font-size: 11px; line-height: 16px; }
+.chart-tip-event { display: flex; gap: 6px; align-items: flex-start; margin-top: 6px; color: var(--text); }
+.chart-tip-pin { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--accent); color: var(--accent); font: 600 10px/1 var(--font-mono); margin-top: 1px; }
+.chart-table-wrap { max-height: 360px; overflow: auto; border: 1px solid var(--border); border-radius: var(--r-sm); }
+.chart-table-wrap .table th { position: sticky; top: 0; z-index: 1; }
+.chart-table-wrap .table-caption { padding: 10px 12px; background: var(--surface); }
+.chart-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.chart-toolbar-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.chart-foot { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 10px; color: var(--text-3); font-size: 12px; line-height: 18px; }
+.chart-foot .icon { display: inline; vertical-align: -3px; margin-right: 4px; }
+.spark { display: inline-block; vertical-align: middle; }
+
+/* ---------------------------------------------------------------- Order book ladder */
+.ladder { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 20px; }
+.ladder th { color: var(--text-3); font-size: 12px; font-weight: 500; text-align: left; padding: 0 8px 6px; }
+.ladder th.num { text-align: right; }
+.ladder td { padding: 3px 8px; }
+.ladder .num { text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text); }
+.ladder-price { width: 64px; }
+.ladder-bar-cell { width: 100%; }
+.ladder-bar { display: block; height: 10px; border-radius: 2px; }
+.ladder-ask .ladder-bar { background: rgba(197, 138, 249, 0.38); margin-left: auto; }
+.ladder-bid .ladder-bar { background: rgba(90, 199, 235, 0.38); }
+.ladder-label th { padding-top: 8px; color: var(--text-3); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+.ladder-spread td { text-align: center; color: var(--text-3); font: 500 12px/18px var(--font-mono); padding: 6px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }

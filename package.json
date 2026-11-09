@@ -1,0 +1,18 @@
+{
+  "name": "banthom-prototype",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "icons": "node build/gen-icons.cjs",
+    "build": "node build/build.mjs --min",
+    "build:dev": "node build/build.mjs",
+    "start": "node server.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "react-icons": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
