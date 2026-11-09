@@ -24,11 +24,33 @@ React 18.3.1 and IBM Plex load from public CDNs at runtime. Everything else is i
 - `src/styles/` tokens and styles, concatenated in filename order
 - `build/check.mjs` and `build/interact.mjs` are the Playwright checks used during the build (they expect a local React test shim from `build/shim.mjs`)
 
+## Live Kalshi data
+
+Kalshi data is **on** (owner confirmed Kalshi's permission on Nov 9, 2026; keep the written
+authorization with the project). The terminal gets a **Kalshi live** section (`#app-live`): a list
+of open markets in Economics, Politics, Elections, World and Financials, and a page per market with
+live quotes, price history, order book and Kalshi's rule text. All other screens still use the
+simulated demo data and say so.
+
+- `server/kalshi.mjs` polls Kalshi's public Trade API v2 (no API key needed) every 3 minutes and
+  fetches a market's quote, order book and candles on demand while its page is open.
+- Prices are converted to cents; a missing bid or ask is shown as —, never filled in. Data older
+  than 2× the refresh interval is labelled Delayed.
+- `config/data-sources.mjs` holds the switch. `KALSHI_ENABLED=false` turns Kalshi off.
+
+API: `/api/kalshi/markets`, `/api/kalshi/markets/:ticker`, `…/orderbook`, `…/history?range=1D|1W|1M|ALL`,
+`/api/kalshi/status`, plus `/healthz` and `/api/config`.
+
 ## Deploy (Railway)
 
-`railway.json` builds with `npm run build` and starts `node server.mjs`, which serves
-`dist/banthom.html` on `$PORT` with a health check at `/healthz` and flags at `/api/config`.
+Railway builds this repo with its default builder (Railpack) and needs no config file: it runs
+`npm install`, `npm run build` (writes `dist/banthom.html`) and `npm start` (`node server.mjs`,
+listening on `$PORT`).
 
-**Kalshi data is off.** `config/data-sources.mjs` enables Kalshi only when
-`KALSHI_ENABLED=true` *and* `KALSHI_AUTHORIZATION_REF` (a reference to Kalshi's written
-authorization) are both set. Leave them unset on Railway until that authorization is on file.
+1. Railway → New project → Deploy from GitHub repo → `rmcinerney4/Banthom`.
+2. Service → Settings → Networking → Generate domain.
+3. Optional: Settings → Deploy → Healthcheck path `/healthz`.
+4. Optional variables: see `.env.example`. No variables are needed for Kalshi to be on.
+
+Railway's old `railway.json` ("Config as Code") is not read for new services and stops being read
+on Dec 1, 2026, so this repo doesn't use it.

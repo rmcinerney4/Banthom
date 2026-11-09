@@ -8,6 +8,8 @@ import { MARKET_BY_ID, EVENT_BY_ID, SCHEDULE, RESEARCH, MARKETS, VENUES, markets
 import { sparkline } from '../data/series.js';
 import { fmtCents, fmtPP, fmtTime, fmtTimeSec, fmtDateShort, fmtWeekday, fmtUntil, fmtAge, midOf, cx, pluralize } from '../lib/format.js';
 import { DAY } from '../lib/time.js';
+import { LIVE } from '../data/live.js';
+import { LiveCallout } from './Live.jsx';
 import { useMarketRows, useTitle, QuoteNum, StarButton, DataAge, SortHeader, sortRows, rowKeyNav, StaleVenueBanner, MetricTile, useVenueStates } from './kit.jsx';
 
 const { useState, useMemo, useCallback } = React;
@@ -220,6 +222,7 @@ export function Dashboard() {
       <PageHeader title="Overview" sub={sub}
         meta={<><span><Icon n="clock" size={13} /> Sources as of {fmtTimeSec(now - (now % 1000))}</span><span>Simulated snapshot · Nov 6, 2026</span></>}
         actions={<Button variant="secondary" icon="layout-template" onClick={() => setCustomize(true)}>Customize dashboard</Button>} />
+      {LIVE && <LiveCallout />}
       <StaleVenueBanner />
       <div className="grid dash-grid">
         <div className="s-3 keep-6 m-order-2"><MetricTile label="Watched markets" value={watched.length} sub={empty ? 'Star a market to follow it here.' : `Across ${pluralize(new Set(watched.map((id) => MARKET_BY_ID[id].eventId)).size, 'event')}`} href="#app-watchlists" linkLabel="Open watchlist" /></div>

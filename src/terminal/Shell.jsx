@@ -7,12 +7,14 @@ import { cx, fmtTimeSec, fmtAge, fmtTime, fmtCents, midOf, fmtDateShort } from '
 import { MARKETS, EVENTS, VENUES, CATEGORIES } from '../data/fixtures.js';
 import { useFeed } from '../data/quotes.js';
 import { useVenueStates } from './kit.jsx';
+import { LIVE } from '../data/live.js';
 
 const { useState, useRef, useMemo, useEffect } = React;
 
 export const NAV_MAIN = [
   { id: 'dashboard', label: 'Overview', icon: 'layout-dashboard', href: '#app-dashboard' },
   { id: 'markets', label: 'Markets', icon: 'list-filter', href: '#app-markets' },
+  ...(LIVE ? [{ id: 'live', label: 'Kalshi live', icon: 'radio', href: '#app-live' }] : []),
   { id: 'compare', label: 'Compare', icon: 'git-compare-arrows', href: '#app-compare' },
   { id: 'research', label: 'Research', icon: 'newspaper', href: '#app-research' },
   { id: 'watchlists', label: 'Watchlists', icon: 'star', href: '#app-watchlists' },
@@ -184,7 +186,7 @@ function AlertsBell() {
   );
 }
 
-export function Topbar({ crumbs, mode, onMenu, onSearch }) {
+export function Topbar({ crumbs, mode, onMenu, onSearch, pill }) {
   const { resetDemo } = useStore();
   return (
     <header className="topbar">
@@ -199,7 +201,7 @@ export function Topbar({ crumbs, mode, onMenu, onSearch }) {
         <Kbd>⌘K</Kbd>
       </button>
       <div className="topbar-right">
-        <FeedStatusPill />
+        {pill || <FeedStatusPill />}
         <AlertsBell />
         <span className="plan-badge" data-tip="Sample workspace on simulated data" data-tip-pos="bottom" tabIndex={0}>Demo plan</span>
         <MenuButton label="Account menu" icon="user-round" variant="ghost" size="md" align="end" items={[

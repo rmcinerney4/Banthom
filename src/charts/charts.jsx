@@ -1,7 +1,7 @@
 import React from 'react';
 import { useWidth, useStableId } from '../lib/hooks.js';
 import { dt, MIN, HOUR, DAY } from '../lib/time.js';
-import { etParts, fmtCents, fmtDateTimeShort, fmtDateShort, fmtTimeBare, fmtMonth, cx, isNum, fmtInt } from '../lib/format.js';
+import { etParts, fmtCents, fmtCentsAuto, fmtDateTimeShort, fmtDateShort, fmtTimeBare, fmtMonth, cx, isNum, fmtInt } from '../lib/format.js';
 
 const { useMemo, useRef, useState, useCallback } = React;
 
@@ -369,7 +369,7 @@ export function OrderLadder({ book, unit = 'contracts', compact }) {
   if (!asks.length && !bids.length) return <p className="muted small">No resting orders.</p>;
   const row = (l, side) => (
     <tr key={side + l.price} className={`ladder-${side}`}>
-      <td className="num ladder-price">{fmtCents(l.price)}</td>
+      <td className="num ladder-price">{fmtCentsAuto(l.price)}</td>
       <td className="ladder-bar-cell">
         <span className="ladder-bar" style={{ width: `${Math.max(3, (l.size / max) * 100)}%` }} />
       </td>
@@ -385,7 +385,7 @@ export function OrderLadder({ book, unit = 'contracts', compact }) {
       <tbody>
         <tr className="ladder-label"><th colSpan={3} scope="rowgroup">Asks · buy Yes at</th></tr>
         {[...asks].reverse().map((l) => row(l, 'ask'))}
-        <tr className="ladder-spread"><td colSpan={3}>Spread {spread != null ? fmtCents(spread) : '—'}</td></tr>
+        <tr className="ladder-spread"><td colSpan={3}>Spread {spread != null ? fmtCentsAuto(spread) : '—'}</td></tr>
         <tr className="ladder-label"><th colSpan={3} scope="rowgroup">Bids · sell Yes at</th></tr>
         {bids.map((l) => row(l, 'bid'))}
       </tbody>
