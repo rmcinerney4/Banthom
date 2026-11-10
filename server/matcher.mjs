@@ -199,6 +199,9 @@ export function createMatcher({ kalshi, polymarket, usd24, minUsd = 100, maxPerV
           if (pc.no && kc.label && kc.label.length && pc.no.every((w) => kc.label.includes(w))) continue;
           // Two outcomes of multi-outcome events must name the same outcome ("Finland" is not "San Marino").
           if (kc.multi && pc.multi && (!namesAgree(kc.lw, pc.lw) || !numsAgree(kc.ln, pc.ln))) continue;
+          // One outcome against a single question: the question must name that outcome ("Cameroon" is not "Both teams to score").
+          if (kc.multi && !pc.multi && !kc.lw.every((w) => pc.words.includes(w))) continue;
+          if (pc.multi && !kc.multi && !namesAgree(kc.lw, pc.lw)) continue;
           // The events themselves must share a word beyond the outcome name ("Person of the Year" is not "Iran leader").
           if (!kc.tw.some((w) => pc.tw.includes(w))) continue;
           // Explicit dates must agree ("Nov 10" is not "November 7").

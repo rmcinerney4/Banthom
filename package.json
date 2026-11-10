@@ -9,7 +9,8 @@
     "build": "node build/build.mjs --min",
     "build:dev": "node build/build.mjs",
     "start": "node --max-old-space-size=640 server.mjs",
-    "icons": "node build/gen-icons.cjs"
+    "icons": "node build/gen-icons.cjs",
+    "test": "node test/matcher.test.mjs"
   },
   "dependencies": {
     "esbuild": "^0.28.2"
