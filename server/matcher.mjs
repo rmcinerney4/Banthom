@@ -6,6 +6,7 @@
 // outcome. Only mutual best matches are kept. These are suggestions: the rules can still differ.
 
 const DAY = 86400e3;
+const RARE_EVENTS = 5; // a title word used by this many events or fewer (both venues) counts as distinctive
 const tick = () => new Promise((r) => setImmediate(r));
 
 const STOP = new Set(('a an the of in on at by for to from with and or be is are was were will would should could can do does did ' +
@@ -40,15 +41,19 @@ function isRange(t) {
   return false;
 }
 
+const monthOf = (m) => SYN.get(m) || m;
+
 function parse(text) {
+  const dates = new Set();
+  const date = (mo, d) => { dates.add(`${monthOf(mo)}-${Number(d)}`); return ` ${mo} `; };
   let t = ` ${String(text || '').toLowerCase()} `;
   t = t.replace(/u\.s\.|united states/g, ' us ').replace(/no change/g, ' hold ')
     .replace(/or more|or higher|or above/g, ' or_more ').replace(/or less|or lower|or below/g, ' or_less ')
     .replace(/(\d),(?=\d{3}\b)/g, '$1')
     .replace(/\b(20[2-4]\d)\s*[-–\/]\s*(\d\d)\b/g, ' $1 20$2 ') // seasons: "2025-26" covers 2025 and 2026
-    // Days of the month are dates, not strikes: "Nov 11" keeps the month and drops the 11.
-    .replace(new RegExp(`\\b(${MONTHS})\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?\\b`, 'g'), ' $1 ')
-    .replace(new RegExp(`\\b\\d{1,2}(?:st|nd|rd|th)?\\s+(${MONTHS})\\b`, 'g'), ' $1 ');
+    // Days of the month are dates, not strikes: "Nov 11" becomes the date november-11, kept apart from the numbers.
+    .replace(new RegExp(`\\b(${MONTHS})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`, 'g'), (all, mo, d) => date(mo, d))
+    .replace(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(${MONTHS})\\b`, 'g'), (all, d, mo) => date(mo, d));
   const range = isRange(t);
   const nums = new Set();
   const years = new Set();
@@ -72,7 +77,7 @@ function parse(text) {
     words.add(w);
   }
   // A range is its own kind of question: it never pairs with an "above" or "below" market.
-  return { words: [...words], nums, years, dir: range ? 'range' : dir };
+  return { words: [...words], nums, years, dates, dir: range ? 'range' : dir };
 }
 export { parse };
 
@@ -138,6 +143,16 @@ export function createMatcher({ kalshi, polymarket, usd24, minUsd = 100, maxPerV
       await tick();
       const P = candidates('polymarket', ps);
       await tick();
+      // How many events use each title word. A rare title word on one side only means a different question.
+      const edf = new Map();
+      const seenEvents = new Set();
+      for (const c of [...K, ...P]) {
+        const key = `${c.id.slice(0, 2)}|${c.m.event}`;
+        if (seenEvents.has(key)) continue;
+        seenEvents.add(key);
+        for (const w of c.tw) edf.set(w, (edf.get(w) || 0) + 1);
+      }
+      const rare = (w) => (edf.get(w) || 0) <= RARE_EVENTS;
       // Word weights from both venues' candidates.
       const df = new Map();
       for (const c of K) for (const w of c.words) df.set(w, (df.get(w) || 0) + 1);
@@ -186,6 +201,10 @@ export function createMatcher({ kalshi, polymarket, usd24, minUsd = 100, maxPerV
           if (kc.multi && pc.multi && (!namesAgree(kc.lw, pc.lw) || !numsAgree(kc.ln, pc.ln))) continue;
           // The events themselves must share a word beyond the outcome name ("Person of the Year" is not "Iran leader").
           if (!kc.tw.some((w) => pc.tw.includes(w))) continue;
+          // Explicit dates must agree ("Nov 10" is not "November 7").
+          if (kc.dates.size && pc.dates.size && ![...kc.dates].some((d) => pc.dates.has(d))) continue;
+          // A rare title word on one side only ("coding model" vs "AI model", "talk to" vs "meet with").
+          if (kc.tw.some((w) => rare(w) && !pc.words.includes(w)) || pc.tw.some((w) => rare(w) && !kc.words.includes(w))) continue;
           best = { ki, score };
         }
         if (!best) continue;
