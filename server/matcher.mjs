@@ -29,6 +29,8 @@ const SYN = new Map(Object.entries({
 const UP = new Set(['above', 'over', 'greater', 'more', 'higher', 'exceed', 'exceeds', 'least', 'or_more']);
 const DOWN = new Set(['below', 'under', 'less', 'lower', 'fewer', 'or_less']);
 
+const MONTHS = 'january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept|sep|oct|nov|dec';
+
 // A bucket such as "$104,000 to $104,499" or "between 3% and 3.5%". Seasons such as "2025-26" are not ranges.
 function isRange(t) {
   if (/\bbetween\b/.test(t)) return true;
@@ -43,7 +45,10 @@ function parse(text) {
   t = t.replace(/u\.s\.|united states/g, ' us ').replace(/no change/g, ' hold ')
     .replace(/or more|or higher|or above/g, ' or_more ').replace(/or less|or lower|or below/g, ' or_less ')
     .replace(/(\d),(?=\d{3}\b)/g, '$1')
-    .replace(/\b(20[2-4]\d)\s*[-–\/]\s*(\d\d)\b/g, ' $1 20$2 '); // seasons: "2025-26" covers 2025 and 2026
+    .replace(/\b(20[2-4]\d)\s*[-–\/]\s*(\d\d)\b/g, ' $1 20$2 ') // seasons: "2025-26" covers 2025 and 2026
+    // Days of the month are dates, not strikes: "Nov 11" keeps the month and drops the 11.
+    .replace(new RegExp(`\\b(${MONTHS})\\.?\\s+\\d{1,2}(?:st|nd|rd|th)?\\b`, 'g'), ' $1 ')
+    .replace(new RegExp(`\\b\\d{1,2}(?:st|nd|rd|th)?\\s+(${MONTHS})\\b`, 'g'), ' $1 ');
   const range = isRange(t);
   const nums = new Set();
   const years = new Set();
@@ -80,7 +85,14 @@ function fnv(str, seed) {
 export const pairId = (k, p) => fnv(`${k}|${p}`, 2166136261) + fnv(`${p}|${k}`, 2166136261 ^ 0x9e3779b9);
 
 const subset = (a, b) => { for (const x of a) if (!b.has(x)) return false; return true; };
-const numsAgree = (a, b) => (a.size <= b.size ? subset(a, b) : subset(b, a));
+// Strike numbers must match exactly: "top 6" is not "champion", and "4.5%" is not "before 2027".
+const numsAgree = (a, b) => a.size === b.size && subset(a, b);
+// Outcome names agree when the shorter name's words all appear in the longer one ("Oklahoma City" / "Oklahoma City Thunder").
+const namesAgree = (a, b) => {
+  if (!a.length || !b.length) return !a.length && !b.length;
+  const [x, y] = a.length <= b.length ? [a, b] : [b, a];
+  return x.every((w) => y.includes(w));
+};
 const yearsAgree = (a, b) => !a.size || !b.size || [...a].some((y) => b.has(y));
 
 export function createMatcher({ kalshi, polymarket, usd24, minUsd = 100, maxPerVenue = 40000, threshold = 0.6 }) {
@@ -103,10 +115,14 @@ export function createMatcher({ kalshi, polymarket, usd24, minUsd = 100, maxPerV
     out.sort((a, b) => b.u - a.u);
     return out.slice(0, maxPerVenue).map(({ m }) => {
       const e = s.events.get(m.event);
-      const text = venue === 'kalshi' ? `${e ? e.title : ''} ${m.label}` : `${e ? e.title : ''} ${m.label === (e && e.title) ? '' : m.label}`;
+      const title = e ? e.title : '';
+      const text = venue === 'kalshi' ? `${title} ${m.label}` : `${title} ${m.label === title ? '' : m.label}`;
       const p = parse(text);
-      return { id: `${venue}:${m.ticker}`, m, ...p, label: venue === 'kalshi' ? parse(m.label).words : null,
-        yes: m.yes ? parse(m.yes).words : null, no: m.no ? parse(m.no).words : null };
+      const lp = parse(m.label);
+      // One outcome of an event with several (a team, a candidate, a bracket).
+      const multi = ((s.byEvent.get(m.event) || []).length || 1) > 1;
+      return { id: `${venue}:${m.ticker}`, m, ...p, multi, tw: parse(title).words, lw: lp.words, ln: lp.nums,
+        label: venue === 'kalshi' ? lp.words : null, yes: m.yes ? parse(m.yes).words : null, no: m.no ? parse(m.no).words : null };
     });
   }
 
@@ -166,6 +182,10 @@ export function createMatcher({ kalshi, polymarket, usd24, minUsd = 100, maxPerV
           // Named outcomes (e.g. two teams): Polymarket's "Yes" name must be the Kalshi outcome, and its "No" name must not be.
           if (pc.yes && !pc.yes.every((w) => kc.words.includes(w))) continue;
           if (pc.no && kc.label && kc.label.length && pc.no.every((w) => kc.label.includes(w))) continue;
+          // Two outcomes of multi-outcome events must name the same outcome ("Finland" is not "San Marino").
+          if (kc.multi && pc.multi && (!namesAgree(kc.lw, pc.lw) || !numsAgree(kc.ln, pc.ln))) continue;
+          // The events themselves must share a word beyond the outcome name ("Person of the Year" is not "Iran leader").
+          if (!kc.tw.some((w) => pc.tw.includes(w))) continue;
           best = { ki, score };
         }
         if (!best) continue;
