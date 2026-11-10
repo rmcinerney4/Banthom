@@ -29,11 +29,22 @@ const SYN = new Map(Object.entries({
 const UP = new Set(['above', 'over', 'greater', 'more', 'higher', 'exceed', 'exceeds', 'least', 'or_more']);
 const DOWN = new Set(['below', 'under', 'less', 'lower', 'fewer', 'or_less']);
 
+// A bucket such as "$104,000 to $104,499" or "between 3% and 3.5%". Seasons such as "2025-26" are not ranges.
+function isRange(t) {
+  if (/\bbetween\b/.test(t)) return true;
+  const re = /(\$?\d+(?:\.\d+)?)\s*(?:k|m|%|°f?|°c?)?\s*(?:to|-|–)\s*\$?\d/g;
+  let m;
+  while ((m = re.exec(t))) if (!/^\$?20[2-4]\d$/.test(m[1])) return true;
+  return false;
+}
+
 function parse(text) {
   let t = ` ${String(text || '').toLowerCase()} `;
   t = t.replace(/u\.s\.|united states/g, ' us ').replace(/no change/g, ' hold ')
     .replace(/or more|or higher|or above/g, ' or_more ').replace(/or less|or lower|or below/g, ' or_less ')
-    .replace(/(\d),(?=\d{3}\b)/g, '$1');
+    .replace(/(\d),(?=\d{3}\b)/g, '$1')
+    .replace(/\b(20[2-4]\d)\s*[-–\/]\s*(\d\d)\b/g, ' $1 20$2 '); // seasons: "2025-26" covers 2025 and 2026
+  const range = isRange(t);
   const nums = new Set();
   const years = new Set();
   const words = new Set();
@@ -55,8 +66,10 @@ function parse(text) {
     if (w.length < 2 || STOP.has(w)) continue;
     words.add(w);
   }
-  return { words: [...words], nums, years, dir };
+  // A range is its own kind of question: it never pairs with an "above" or "below" market.
+  return { words: [...words], nums, years, dir: range ? 'range' : dir };
 }
+export { parse };
 
 // Stable id for a pair (same markets → same id across rebuilds), so Compare links keep working.
 function fnv(str, seed) {
@@ -147,7 +160,8 @@ export function createMatcher({ kalshi, polymarket, usd24, minUsd = 100, maxPerV
           for (const w of pc.words) if (kc.words.includes(w)) shared++;
           if (shared < 2) continue;
           if (!numsAgree(kc.nums, pc.nums) || !yearsAgree(kc.years, pc.years)) continue;
-          if (kc.dir && pc.dir && kc.dir !== pc.dir) continue;
+          // Same kind of question on both sides: above with above, below with below, range with range, or neither.
+          if (kc.dir !== pc.dir) continue;
           if (kc.m.closes && pc.m.closes && Math.abs(kc.m.closes - pc.m.closes) > 7 * DAY) continue;
           // Named outcomes (e.g. two teams): Polymarket's "Yes" name must be the Kalshi outcome, and its "No" name must not be.
           if (pc.yes && !pc.yes.every((w) => kc.words.includes(w))) continue;
@@ -160,6 +174,7 @@ export function createMatcher({ kalshi, polymarket, usd24, minUsd = 100, maxPerV
         if (!cur || best.score > cur.score) bestForK.set(best.ki, { pi, score: best.score });
       }
       const next = [];
+      const kept = [];
       bestForP.forEach((b, pi) => {
         if (!b) return;
         const back = bestForK.get(b.ki);
@@ -167,6 +182,7 @@ export function createMatcher({ kalshi, polymarket, usd24, minUsd = 100, maxPerV
         const k = K[b.ki].id;
         const p = P[pi].id;
         next.push({ id: pairId(k, p), k, p, score: Math.round(b.score * 100) / 100 });
+        kept.push([K[b.ki], P[pi]]);
       });
       pairs = next;
       byMarket = new Map();
@@ -176,6 +192,11 @@ export function createMatcher({ kalshi, polymarket, usd24, minUsd = 100, maxPerV
       lastMs = builtAt - t0;
       lastError = null;
       console.log(`[pairs] ${next.length} suggested pairs from ${K.length} Kalshi and ${P.length} Polymarket candidates in ${(lastMs / 1000).toFixed(1)}s`);
+      // The widest gaps are where a wrong pair shows first; log them so pairs can be audited from the logs.
+      const name = (c, s) => { const t = (s.events.get(c.m.event) || {}).title || ''; return (t && t !== c.m.label ? `${t}: ${c.m.label}` : c.m.label).slice(0, 70); };
+      const gaps = kept.map(([kc, pc]) => ({ kc, pc, gap: kc.m.mid != null && pc.m.mid != null ? kc.m.mid - pc.m.mid : null }))
+        .filter((g) => g.gap != null).sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap)).slice(0, 5);
+      if (gaps.length) console.log(`[pairs] widest gaps: ${gaps.map((g) => `"${name(g.kc, ks)}" ${Math.round(g.kc.m.mid)}¢ vs "${name(g.pc, ps)}" ${Math.round(g.pc.m.mid)}¢`).join(' | ')}`);
     } catch (err) {
       lastError = { message: String((err && err.message) || err).slice(0, 300), at: Date.now() };
       console.warn(`[pairs] build failed: ${lastError.message}`);

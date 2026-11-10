@@ -133,7 +133,7 @@ export function Dashboard() {
           </Panel>
         )}
         {show('pairs') && (
-          <Panel title="Same question, two venues" sub="Suggested Kalshi–Polymarket pairs with the widest price gap · unverified" className="s-5 m-order-5"
+          <Panel title="Same question, two venues" sub="Most active suggested Kalshi–Polymarket pairs · unverified" className="s-5 m-order-5"
             actions={<Button size="sm" variant="ghost" href="#app-compare" iconRight="arrow-right">Compare</Button>}>
             {!ov ? <Skeleton h={160} /> : ov.pairs && ov.pairs.length ? (
               <ul className="related">

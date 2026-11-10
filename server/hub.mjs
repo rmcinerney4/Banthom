@@ -254,7 +254,7 @@ export function overview() {
     active: pick({}),
     movers: pick({ sort: 'ch24abs', minUsd: 1000, midBand: [3, 97], requireCh24: true }),
     closing: pick({ sort: 'closes', dir: 'asc', closingDays: 7, minUsd: 1000 }),
-    pairs: matcher ? matchesList(new URLSearchParams('sort=gap&limit=6')).pairs : [],
+    pairs: matcher ? matchesList(new URLSearchParams('sort=activity&limit=6')).pairs : [],
     pairStatus: matcher ? matcher.status() : null,
   });
   return c.overview;
