@@ -43,6 +43,20 @@ simulated demo data and say so.
 API: `/api/kalshi/markets`, `/api/kalshi/markets/:ticker`, `…/orderbook`, `…/history?range=1D|1W|1M|ALL`,
 `/api/kalshi/status`, plus `/healthz` and `/api/config`.
 
+## Live Polymarket data
+
+Polymarket (polymarket.com) data is **on** (owner reported clearance for the Polymarket APIs on
+Nov 6, 2026). The terminal gets a **Polymarket live** section (`#app-poly`) built from the same
+pages as Kalshi: every open market, with live quotes, price history, order book and the market's
+own resolution text.
+
+- `server/polymarket.mjs` walks Gamma's `/markets/keyset` (v1 and v2 markets, 100 per page) every
+  3 minutes; order books come from the CLOB API (`/book`) and price history from the Data API
+  (`/v2/prices-history`), fetched on demand. All are public and need no API key.
+- Prices are USDC per share, shown in cents. Polymarket US (the CFTC-regulated exchange) is a
+  separate venue with its own approved-member API and is not connected.
+- `POLYMARKET_ENABLED=false` turns it off. API: `/api/polymarket/…` with the same routes as Kalshi.
+
 ## Deploy (Railway)
 
 Railway builds this repo with its default builder (Railpack) and needs no config file: it runs

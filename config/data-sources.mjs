@@ -6,7 +6,8 @@
 // authorization). Keep the written authorization with the project files.
 // Set KALSHI_ENABLED=false to switch Kalshi data off without a code change.
 //
-// Polymarket: OFF unless POLYMARKET_ENABLED=true. No Polymarket integration exists yet.
+// Polymarket: ON (polymarket.com public market data). The owner reported legal clearance for
+// the Polymarket APIs on Nov 6, 2026. Set POLYMARKET_ENABLED=false to switch it off.
 const flag = (v, fallback) => {
   if (v == null || v === '') return fallback;
   return !['false', '0', 'off', 'no'].includes(String(v).trim().toLowerCase());
@@ -18,7 +19,8 @@ export const dataSources = {
     basis: 'Owner-confirmed Kalshi permission, Nov 9, 2026',
   },
   polymarket: {
-    enabled: flag(process.env.POLYMARKET_ENABLED, false),
+    enabled: flag(process.env.POLYMARKET_ENABLED, true),
+    basis: 'Owner-reported clearance for the Polymarket APIs, Nov 6, 2026',
   },
 };
 

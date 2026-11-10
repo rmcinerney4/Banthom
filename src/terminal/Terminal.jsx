@@ -15,8 +15,8 @@ import { Alerts } from './Alerts.jsx';
 import { Watchlists } from './Watchlists.jsx';
 import { Research, Report } from './Research.jsx';
 import { Settings, Help, TerminalStub, TerminalNotFound } from './Misc.jsx';
-import { LiveMarkets, LiveMarket, LiveOff, LiveBanner, KalshiFeedPill } from './Live.jsx';
-import { LIVE } from '../data/live.js';
+import { LiveMarkets, LiveMarket, LiveOff, LiveBanner, LiveFeedPill } from './Live.jsx';
+import { LIVE_VENUES } from '../data/live.js';
 
 const { useState, useEffect, useLayoutEffect, useRef } = React;
 
@@ -27,8 +27,10 @@ export function parseApp(hash) {
   if (h.startsWith('markets-')) return { page: 'markets', nav: `cat-${h.slice(8)}`, category: h.slice(8) };
   if (h.startsWith('market-') && MARKET_BY_ID[h.slice(7)]) return { page: 'market', nav: 'markets', id: h.slice(7) };
   if (h.startsWith('event-') && EVENT_BY_ID[h.slice(6)]) return { page: 'event', nav: 'markets', id: h.slice(6) };
-  if (h === 'live') return { page: LIVE ? 'live' : 'live-off', nav: 'live' };
-  if (h.startsWith('live-')) return LIVE ? { page: 'live-market', nav: 'live', id: h.slice(5) } : { page: 'live-off', nav: 'live' };
+  for (const v of Object.values(LIVE_VENUES)) {
+    if (h === v.route) return { page: v.enabled ? 'live' : 'live-off', nav: v.route, venue: v.id };
+    if (h.startsWith(`${v.route}-`)) return v.enabled ? { page: 'live-market', nav: v.route, venue: v.id, id: h.slice(v.route.length + 1) } : { page: 'live-off', nav: v.route, venue: v.id };
+  }
   if (h === 'compare') return { page: 'compare', nav: 'compare' };
   if (h.startsWith('compare-') && MATCH_BY_ID[h.slice(8)]) return { page: 'compare-detail', nav: 'compare', id: h.slice(8) };
   if (h === 'research') return { page: 'research', nav: 'research' };
@@ -50,8 +52,8 @@ function crumbsFor(r) {
     case 'markets': return r.category ? [{ label: 'Markets', href: '#app-markets' }, { label: CATEGORY_LABEL[r.category] || r.category }] : [{ label: 'Markets' }];
     case 'market': return [{ label: 'Markets', href: '#app-markets' }, { label: CATEGORY_LABEL[ev.category], href: `#app-markets-${ev.category}` }, { label: ev.title, href: `#app-event-${ev.id}` }, { label: mk.outcome }];
     case 'event': return [{ label: 'Markets', href: '#app-markets' }, { label: CATEGORY_LABEL[ev.category], href: `#app-markets-${ev.category}` }, { label: ev.title }];
-    case 'live': case 'live-off': return [{ label: 'Kalshi markets' }];
-    case 'live-market': return [{ label: 'Kalshi markets', href: '#app-live' }, { label: r.id }];
+    case 'live': case 'live-off': return [{ label: `${LIVE_VENUES[r.venue].name} markets` }];
+    case 'live-market': return [{ label: `${LIVE_VENUES[r.venue].name} markets`, href: `#app-${LIVE_VENUES[r.venue].route}` }, { label: r.id }];
     case 'compare': return [{ label: 'Compare' }];
     case 'compare-detail': return [{ label: 'Compare', href: '#app-compare' }, { label: MATCH_BY_ID[r.id].canonical }];
     case 'research': return [{ label: 'Research' }];
@@ -93,16 +95,17 @@ export function Terminal({ hash }) {
   useLayoutEffect(() => { window.scrollTo(0, 0); setDrawer(false); setMore(false); }, [scrollRoute]);
 
   const crumbs = crumbsFor(route);
-  const isLive = LIVE && (route.page === 'live' || route.page === 'live-market');
+  const liveV = (route.page === 'live' || route.page === 'live-market') && route.venue ? LIVE_VENUES[route.venue] : null;
+  const isLive = !!(liveV && liveV.enabled);
   let page;
   switch (route.page) {
     case 'dashboard': page = <Dashboard />; break;
     case 'markets': page = <Explorer category={route.category} viewRequest={viewReq} />; break;
     case 'market': page = <MarketDetail key={route.id} id={route.id} />; break;
     case 'event': page = <EventPage key={route.id} id={route.id} />; break;
-    case 'live': page = <LiveMarkets />; break;
-    case 'live-market': page = <LiveMarket key={route.id} ticker={route.id} />; break;
-    case 'live-off': page = <LiveOff />; break;
+    case 'live': page = <LiveMarkets key={route.venue} v={LIVE_VENUES[route.venue]} />; break;
+    case 'live-market': page = <LiveMarket key={`${route.venue}-${route.id}`} v={LIVE_VENUES[route.venue]} ticker={route.id} />; break;
+    case 'live-off': page = <LiveOff name={LIVE_VENUES[route.venue].name} />; break;
     case 'compare': page = <CompareList />; break;
     case 'compare-detail': page = <CompareDetail key={route.id} id={route.id} />; break;
     case 'research': page = <Research />; break;
@@ -125,8 +128,8 @@ export function Terminal({ hash }) {
     <div className={cx('term', `term-${mode}`)}>
       {(mode === 'expanded' || mode === 'rail') && <aside className="sidebar" aria-label="Sidebar">{side(false)}</aside>}
       <div className="term-col">
-        {isLive ? <LiveBanner /> : <DemoBanner />}
-        <Topbar crumbs={crumbs} mode={mode} onMenu={() => setDrawer(true)} onSearch={() => setPalette(true)} pill={isLive ? <KalshiFeedPill /> : null} />
+        {isLive ? <LiveBanner v={liveV} /> : <DemoBanner />}
+        <Topbar crumbs={crumbs} mode={mode} onMenu={() => setDrawer(true)} onSearch={() => setPalette(true)} pill={isLive ? <LiveFeedPill key={liveV.id} v={liveV} /> : null} />
         <main id="main" className="term-main">{page}</main>
         <footer className="term-foot">
           <span>Banthom prototype · Research only, not investment advice · Prices are market-implied proxies, not guaranteed probabilities.</span>

@@ -1,5 +1,5 @@
 /* Live Kalshi pages */
-.venue-kal { border-color: var(--success-line); }
+.venue-live-kalshi, .venue-live-polymarket { border-color: var(--success-line); }
 .live-tag {
   display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 6px; border-radius: var(--r-xs);
   border: 1px solid var(--success-line); background: var(--success-bg); color: var(--success);

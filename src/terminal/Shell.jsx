@@ -7,14 +7,14 @@ import { cx, fmtTimeSec, fmtAge, fmtTime, fmtCents, midOf, fmtDateShort } from '
 import { MARKETS, EVENTS, VENUES, CATEGORIES } from '../data/fixtures.js';
 import { useFeed } from '../data/quotes.js';
 import { useVenueStates } from './kit.jsx';
-import { LIVE } from '../data/live.js';
+import { LIVE_LIST } from '../data/live.js';
 
 const { useState, useRef, useMemo, useEffect } = React;
 
 export const NAV_MAIN = [
   { id: 'dashboard', label: 'Overview', icon: 'layout-dashboard', href: '#app-dashboard' },
   { id: 'markets', label: 'Markets', icon: 'list-filter', href: '#app-markets' },
-  ...(LIVE ? [{ id: 'live', label: 'Kalshi live', icon: 'radio', href: '#app-live' }] : []),
+  ...LIVE_LIST.map((v) => ({ id: v.route, label: v.navLabel, icon: 'radio', href: `#app-${v.route}` })),
   { id: 'compare', label: 'Compare', icon: 'git-compare-arrows', href: '#app-compare' },
   { id: 'research', label: 'Research', icon: 'newspaper', href: '#app-research' },
   { id: 'watchlists', label: 'Watchlists', icon: 'star', href: '#app-watchlists' },

@@ -4,10 +4,17 @@ import fs from 'node:fs';
 import zlib from 'node:zlib';
 import { dataSources, sourceFlags } from './config/data-sources.mjs';
 import * as kalshi from './server/kalshi.mjs';
+import * as polymarket from './server/polymarket.mjs';
 
 const PORT = Number(process.env.PORT) || 3000;
-const KALSHI = dataSources.kalshi.enabled;
-const config = { dataSources: sourceFlags(), kalshi: KALSHI ? kalshi.clientConfig() : null };
+// Live venues: each module exposes the same interface (start, status, listQuery, marketDetail,
+// orderbook, history, clientConfig).
+const VENUES = {
+  kalshi: { mod: kalshi, enabled: dataSources.kalshi.enabled, id: /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/, name: 'Kalshi' },
+  polymarket: { mod: polymarket, enabled: dataSources.polymarket.enabled, id: /^[0-9]{1,20}$/, name: 'Polymarket' },
+};
+const config = { dataSources: sourceFlags() };
+for (const [k, v] of Object.entries(VENUES)) config[k] = v.enabled ? v.mod.clientConfig() : null;
 
 // ---- Page: the built app wrapped in a full document, with the runtime config injected.
 let fragment;
@@ -53,8 +60,8 @@ const json = (req, res, status, obj, extra = {}) => send(req, res, status, JSON.
 
 // ---- Market list: one serialized body per collector pass, revalidated with an ETag.
 const listGz = new Map();
-function sendList(req, res, params) {
-  const { body, etag } = kalshi.listQuery(params);
+function sendList(req, res, venue, params) {
+  const { body, etag } = venue.mod.listQuery(params);
   const extra = { 'cache-control': 'no-cache', etag, 'x-server-time': String(Date.now()) };
   if (req.headers['if-none-match'] === etag) {
     res.writeHead(304, { ...BASE_HEADERS, ...extra });
@@ -69,7 +76,6 @@ function sendList(req, res, params) {
   return send(req, res, 200, body, 'application/json; charset=utf-8', extra, gz);
 }
 
-const TICKER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 async function route(req, res) {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -80,24 +86,27 @@ async function route(req, res) {
   if (p === '/healthz') return send(req, res, 200, 'ok', 'text/plain; charset=utf-8', { 'cache-control': 'no-store' });
   if (p === '/api/config') return json(req, res, 200, config);
 
-  if (p === '/api/kalshi' || p.startsWith('/api/kalshi/')) {
-    if (!KALSHI) return json(req, res, 503, { error: 'Kalshi data is switched off.' });
-    if (p === '/api/kalshi/status') return json(req, res, 200, kalshi.status());
-    if (p === '/api/kalshi/markets') return sendList(req, res, url.searchParams);
-    const m = p.match(/^\/api\/kalshi\/markets\/([^/]+)(?:\/(orderbook|history))?$/);
+  const vm = p.match(/^\/api\/(kalshi|polymarket)(\/.*)?$/);
+  if (vm) {
+    const venue = VENUES[vm[1]];
+    const rest = vm[2] || '';
+    if (!venue.enabled) return json(req, res, 503, { error: `${venue.name} data is switched off.` });
+    if (rest === '/status') return json(req, res, 200, venue.mod.status());
+    if (rest === '/markets') return sendList(req, res, venue, url.searchParams);
+    const m = rest.match(/^\/markets\/([^/]+)(?:\/(orderbook|history))?$/);
     if (m) {
-      let ticker = '';
-      try { ticker = decodeURIComponent(m[1]); } catch { /* invalid escape */ }
-      if (!TICKER.test(ticker)) return json(req, res, 400, { error: 'Invalid market ticker.' });
+      let id = '';
+      try { id = decodeURIComponent(m[1]); } catch { /* invalid escape */ }
+      if (!venue.id.test(id)) return json(req, res, 400, { error: 'Invalid market id.' });
       try {
-        const data = m[2] === 'orderbook' ? await kalshi.orderbook(ticker)
-          : m[2] === 'history' ? await kalshi.history(ticker, url.searchParams.get('range'))
-            : await kalshi.marketDetail(ticker);
+        const data = m[2] === 'orderbook' ? await venue.mod.orderbook(id)
+          : m[2] === 'history' ? await venue.mod.history(id, url.searchParams.get('range'))
+            : await venue.mod.marketDetail(id);
         return json(req, res, 200, data);
       } catch (err) {
         const notFound = err && err.status === 404;
-        if (!notFound) console.warn(`[kalshi] ${p}: ${err && err.message}`);
-        return json(req, res, notFound ? 404 : 502, { error: notFound ? 'Kalshi has no market with this ticker.' : 'Kalshi did not respond. Try again shortly.' });
+        if (!notFound) console.warn(`[${vm[1]}] ${p}: ${err && err.message}`);
+        return json(req, res, notFound ? 404 : 502, { error: notFound ? `${venue.name} has no market with this id.` : `${venue.name} did not respond. Try again shortly.` });
       }
     }
     return json(req, res, 404, { error: 'Not found.' });
@@ -119,7 +128,7 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Banthom listening on :${PORT} · data sources ${JSON.stringify(config.dataSources)}`);
-  if (KALSHI) kalshi.start();
+  for (const v of Object.values(VENUES)) if (v.enabled) v.mod.start();
 });
 
 for (const sig of ['SIGTERM', 'SIGINT']) {
