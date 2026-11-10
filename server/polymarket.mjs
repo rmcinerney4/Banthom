@@ -105,14 +105,51 @@ const jsonList = (v) => {
 const tokensOf = (m) => (m.version === 'v2' ? jsonList(m.positionIds) : jsonList(m.clobTokenIds)).map(String);
 const isOpen = (m) => !m.closed && m.active !== false && !m.archived && m.enableOrderBook !== false;
 
+// Polymarket organises markets by tags rather than a category field. Map tag labels and slugs
+// onto Polymarket's main sections; when a market has several, the earlier section in this list wins.
+const SECTIONS = ['Sports', 'Esports', 'Crypto', 'Elections', 'Politics', 'Geopolitics', 'Economy', 'Earnings', 'Finance', 'Tech', 'Climate & Science', 'Culture', 'World', 'Mentions'];
+const TAG_SECTION = new Map(Object.entries({
+  sports: 'Sports', nfl: 'Sports', nba: 'Sports', mlb: 'Sports', nhl: 'Sports', soccer: 'Sports', football: 'Sports', tennis: 'Sports', golf: 'Sports', ufc: 'Sports', mma: 'Sports', boxing: 'Sports', f1: 'Sports', cricket: 'Sports', basketball: 'Sports', baseball: 'Sports', hockey: 'Sports', ncaa: 'Sports', epl: 'Sports', 'premier-league': 'Sports', 'champions-league': 'Sports', olympics: 'Sports', games: 'Sports',
+  esports: 'Esports', 'counter-strike': 'Esports', 'league-of-legends': 'Esports', dota: 'Esports', 'dota-2': 'Esports', valorant: 'Esports',
+  crypto: 'Crypto', bitcoin: 'Crypto', ethereum: 'Crypto', solana: 'Crypto', xrp: 'Crypto', 'crypto-prices': 'Crypto',
+  elections: 'Elections', 'global-elections': 'Elections', 'us-election': 'Elections', 'world-elections': 'Elections', midterms: 'Elections', primaries: 'Elections',
+  politics: 'Politics', 'us-politics': 'Politics', trump: 'Politics', congress: 'Politics', 'trump-presidency': 'Politics', courts: 'Politics', scotus: 'Politics',
+  geopolitics: 'Geopolitics', ukraine: 'Geopolitics', russia: 'Geopolitics', israel: 'Geopolitics', china: 'Geopolitics', iran: 'Geopolitics', 'middle-east': 'Geopolitics',
+  economy: 'Economy', fed: 'Economy', 'fed-rates': 'Economy', inflation: 'Economy', cpi: 'Economy', gdp: 'Economy', jobs: 'Economy', recession: 'Economy', tariffs: 'Economy', 'economic-policy': 'Economy',
+  earnings: 'Earnings', finance: 'Finance', business: 'Finance', stocks: 'Finance', 'stock-market': 'Finance', ipos: 'Finance', commodities: 'Finance', 'big-tech': 'Tech',
+  tech: 'Tech', ai: 'Tech', 'artificial-intelligence': 'Tech', openai: 'Tech', science: 'Climate & Science', climate: 'Climate & Science', 'climate-science': 'Climate & Science', weather: 'Climate & Science', space: 'Climate & Science', 'climate-&-science': 'Climate & Science',
+  culture: 'Culture', 'pop-culture': 'Culture', entertainment: 'Culture', movies: 'Culture', music: 'Culture', awards: 'Culture', 'tv': 'Culture', celebrities: 'Culture', 'box-office': 'Culture',
+  world: 'World', 'world-affairs': 'World', mentions: 'Mentions',
+}));
+const slugify = (x) => String(x || '').trim().toLowerCase().replace(/\s+/g, '-');
+function sectionOf(...tagLists) {
+  let best = -1;
+  for (const list of tagLists) {
+    if (!Array.isArray(list)) continue;
+    for (const t of list) {
+      if (!t) continue;
+      for (const key of [slugify(t.slug), slugify(t.label)]) {
+        const sec = TAG_SECTION.get(key);
+        const i = sec ? SECTIONS.indexOf(sec) : -1;
+        if (i >= 0 && (best < 0 || i < best)) best = i;
+      }
+    }
+  }
+  return best >= 0 ? SECTIONS[best] : null;
+}
+const legacyCategory = (c) => {
+  if (!c || typeof c !== 'string') return null;
+  const sec = TAG_SECTION.get(slugify(c));
+  return sec || null;
+};
+
 function eventOf(m) {
   const e = (Array.isArray(m.events) && m.events[0]) || {};
-  const tag = Array.isArray(e.tags) && e.tags.find((t) => t && t.label);
   return {
     ticker: String(e.id || `m${m.id}`),
     title: e.title || m.question || String(m.id),
     sub: e.subtitle || '',
-    category: e.category || m.category || (tag && tag.label) || 'Other',
+    category: sectionOf(m.tags, e.tags) || legacyCategory(e.category) || legacyCategory(m.category) || 'Other',
     slug: e.slug || m.slug || '',
     exclusive: !!(e.negRisk || e.enableNegRisk),
   };
@@ -166,10 +203,11 @@ async function runPass() {
   const t0 = Date.now();
   const seen = new Set();
   const byEvent = new Map();
+  const otherTags = new Map(); // tags on markets that fit no section, logged to refine the mapping
   let cursor = '';
   let pages = 0;
   do {
-    const data = await getJSON(GAMMA, '/markets/keyset', { closed: 'false', limit: 100, version: ['v1', 'v2'], after_cursor: cursor });
+    const data = await getJSON(GAMMA, '/markets/keyset', { closed: 'false', limit: 100, version: ['v1', 'v2'], include_tag: 'true', after_cursor: cursor });
     const at = Date.now();
     for (const m of data.markets || []) {
       if (!m || m.id == null || !isOpen(m)) continue;
@@ -179,9 +217,13 @@ async function runPass() {
       if (cur) Object.assign(cur, c); else state.markets.set(c.ticker, c);
       seen.add(c.ticker);
       const ev = eventOf(m);
+      if (ev.category === 'Other' && Array.isArray(m.tags)) {
+        for (const t of m.tags) if (t && t.label) otherTags.set(t.label, (otherTags.get(t.label) || 0) + 1);
+      }
       const curE = state.events.get(ev.ticker);
       if (!curE) state.events.set(ev.ticker, ev);
       else if (!byEvent.has(ev.ticker)) Object.assign(curE, ev);
+      else if (curE.category === 'Other' && ev.category !== 'Other') curE.category = ev.category;
       const list = byEvent.get(ev.ticker);
       if (list) list.push(c.ticker); else byEvent.set(ev.ticker, [c.ticker]);
     }
@@ -193,6 +235,10 @@ async function runPass() {
   for (const t of state.events.keys()) if (!byEvent.has(t)) state.events.delete(t);
   const done = Date.now();
   Object.assign(state, { byEvent, index: null, lastPassAt: done, lastSuccessAt: done, lastPassMs: done - t0, lastError: null });
+  const cats = new Map();
+  for (const e of state.events.values()) cats.set(e.category, (cats.get(e.category) || 0) + 1);
+  console.log(`[polymarket] events by category: ${[...cats].sort((a, b) => b[1] - a[1]).map(([c, n]) => `${c} ${n}`).join(', ')}`);
+  if (otherTags.size) console.log(`[polymarket] top tags in Other: ${[...otherTags].sort((a, b) => b[1] - a[1]).slice(0, 25).map(([t, n]) => `${t} ${n}`).join(', ')}`);
   console.log(`[polymarket] ${state.markets.size} markets in ${state.events.size} events (${pages} pages) in ${((done - t0) / 1000).toFixed(1)}s · ${mem()}`);
 }
 
@@ -291,6 +337,8 @@ export async function marketDetail(id) {
   const at = Date.now();
   const c = compactMarket(m, at);
   const ev = eventOf(m);
+  const known = state.events.get(ev.ticker);
+  if (known && ev.category === 'Other') ev.category = known.category;
   const outcomes = jsonList(m.outcomes).map(String);
   const yes = outcomes[0] || 'Yes';
   const no = outcomes[1] || 'No';
