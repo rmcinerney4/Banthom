@@ -58,32 +58,6 @@
 .nav-sheet .sheet-head { display: none; }
 .nav-sheet .side-inner { min-height: 100%; }
 
-/* Demo banner */
-.demo-banner {
-  display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 4px 24px; background: #11171e;
-  border-bottom: 1px solid var(--warning-line); font-size: 13px; line-height: 18px; color: var(--text-2);
-}
-.term-drawer .demo-banner, .term-mobile .demo-banner { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
-.demo-text { flex: 1 1 auto; min-width: 0; }
-.demo-short { display: none; }
-.demo-controls { display: flex; align-items: center; gap: 6px; flex: none; }
-.demo-btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border-radius: var(--r-xs); border: 1px solid var(--border); background: transparent; color: var(--text-2); font-size: 12px; white-space: nowrap; }
-.demo-btn:hover, .demo-btn[aria-expanded="true"] { background: var(--elevated); color: var(--text); }
-.demo-btn[aria-pressed="true"] { border-color: var(--warning-line); color: var(--warning); }
-.scenario-pop { width: 300px; }
-.scenario-list { display: flex; flex-direction: column; margin-top: 8px; }
-.scenario-opt { display: flex; align-items: center; gap: 10px; padding: 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-2); text-align: left; font-size: 14px; }
-.scenario-opt:hover { background: var(--hover); color: var(--text); }
-.scenario-opt[aria-checked="true"] { color: var(--text); }
-.radio-dot { width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--border-control); flex: none; display: inline-flex; align-items: center; justify-content: center; }
-.scenario-opt[aria-checked="true"] .radio-dot { border-color: var(--accent); }
-.scenario-opt[aria-checked="true"] .radio-dot::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
-.scenario-sep { height: 1px; background: var(--border); margin: 8px 0 0; }
-@media (max-width: 1023px) {
-  .demo-long { display: none; }
-  .demo-short { display: inline; }
-}
-
 /* Top bar */
 .topbar {
   position: sticky; top: env(safe-area-inset-top, 0px); z-index: 40; display: flex; align-items: center; gap: 12px; height: var(--topbar);

@@ -1,5 +1,4 @@
 import React from 'react';
-import { demoNow } from './time.js';
 
 const { useState, useEffect, useRef, useLayoutEffect, useSyncExternalStore, useCallback } = React;
 
@@ -48,20 +47,6 @@ export function useStored(key, initial) {
   useEffect(() => { writeStored(key, value); }, [key, value]);
   return [value, setValue];
 }
-
-// ---- Shared one-second demo clock (only subscribers re-render)
-const clock = { now: demoNow(), subs: new Set(), timer: null };
-function subscribeClock(cb) {
-  clock.subs.add(cb);
-  if (!clock.timer) {
-    clock.timer = setInterval(() => { clock.now = demoNow(); clock.subs.forEach((f) => f()); }, 1000);
-  }
-  return () => {
-    clock.subs.delete(cb);
-    if (!clock.subs.size && clock.timer) { clearInterval(clock.timer); clock.timer = null; }
-  };
-}
-export const useNow = () => useSyncExternalStore(subscribeClock, () => clock.now, () => clock.now);
 
 // ---- Element width
 export function useWidth(ref) {

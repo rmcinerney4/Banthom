@@ -1,5 +1,5 @@
-// Live data from the Banthom server (Kalshi). The server injects window.__BANTHOM__ into the
-// page; without it (for example the static prototype), live data is off and nothing is fetched.
+// Live data from the Banthom server (Kalshi and Polymarket). The server injects window.__BANTHOM__
+// into the page; without it (for example a static copy), live data is off and nothing is fetched.
 import React from 'react';
 import { isNum } from '../lib/format.js';
 
@@ -89,7 +89,7 @@ export function usePolled(url, intervalMs, { keep = false } = {}) {
   return { data: current || keep ? st.data : null, error: current ? st.error : null, loading: !current || (!st.data && !st.error), retry };
 }
 
-// One-second real clock (the demo screens use a simulated clock instead).
+// One-second clock on server time, for data ages.
 const clock = { now: serverNow(), subs: new Set(), timer: null };
 function subscribe(cb) {
   clock.subs.add(cb);
@@ -115,3 +115,66 @@ export function change24(m) {
   const prev = midOf2(m.prevBid, m.prevAsk);
   return isNum(now) && isNum(prev) ? Math.round((now - prev) * 10) / 10 : null;
 }
+
+// History response -> chart points (Yes or No side), with gaps where the venue sent no price.
+export function buildSeries(h, side = 'yes') {
+  if (!h) return { points: [], gaps: [] };
+  const step = h.interval * 60e3;
+  const points = [];
+  const gaps = [];
+  let prev = null;
+  for (const p of h.points) {
+    const mid = isNum(p.mid) ? p.mid : midOf2(p.bid, p.ask);
+    const val = isNum(mid) ? (side === 'yes' ? mid : 100 - mid) : null;
+    if (prev && p.t - prev.t > step * 1.5) {
+      points.push({ t: prev.t + step, v: null });
+      gaps.push([prev.t, p.t]);
+    }
+    points.push({ t: p.t, v: val });
+    prev = p;
+  }
+  // Intervals without a price are gaps too.
+  let start = null;
+  points.forEach((p, i) => {
+    if (!isNum(p.v) && start == null) start = i > 0 ? points[i - 1].t : p.t;
+    if (isNum(p.v) && start != null) { gaps.push([start, p.t]); start = null; }
+  });
+  if (start != null && points.length) gaps.push([start, points[points.length - 1].t]);
+  return { points, gaps };
+}
+
+// ---------------------------------------------------------------- Cross-venue API (server/hub.mjs)
+export const VENUE_KEYS = Object.keys(LIVE_VENUES);
+export const venueName = (k) => (LIVE_VENUES[k] ? LIVE_VENUES[k].name : k);
+export const splitId = (id) => {
+  const i = String(id).indexOf(':');
+  return { venue: String(id).slice(0, i), ticker: String(id).slice(i + 1) };
+};
+export const marketHref = (id) => { const { venue, ticker } = splitId(id); return `#app-market-${venue}-${ticker}`; };
+export const eventHref = (venue, ev) => `#app-event-${venue}-${ev}`;
+export const compareHref = (pairId) => `#app-compare-${pairId}`;
+export const venueRecent = (k) => ((LIVE_VENUES[k] && LIVE_VENUES[k].cfg.recentSeconds) || 480);
+
+export const API2 = {
+  markets: (p) => `/api/markets?${new URLSearchParams(Object.entries(p).filter(([, v]) => v != null && v !== '' && v !== 'all'))}`,
+  overview: '/api/overview',
+  status: '/api/status',
+  // At most 200 ids per request, which keeps the URL well under server header limits.
+  quotes: (ids) => (ids && ids.length ? `/api/quotes?ids=${ids.slice(0, 200).map((x) => encodeURIComponent(x)).join(',')}` : null),
+  event: (venue, id) => `/api/events/${venue}/${encodeURIComponent(id)}`,
+  market: (venue, id) => `/api/markets/${venue}/${encodeURIComponent(id)}`,
+  matches: (p) => `/api/matches?${new URLSearchParams(Object.entries(p).filter(([, v]) => v != null && v !== ''))}`,
+  match: (id) => `/api/matches/${encodeURIComponent(id)}`,
+};
+export const fetchJSON = (url, signal) => getJSON(url, signal);
+// Venue status for the top bar and banners (shared poll).
+export const useStatus = () => usePolled(LIVE ? API2.status : null, 30000);
+
+// Shared categories (server/hub.mjs folds Kalshi categories and Polymarket sections into these).
+export const slugOf = (c) => String(c).toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+export const CATEGORY_ICON = {
+  Politics: 'landmark', Elections: 'vote', Economics: 'trending-up', Finance: 'banknote', Companies: 'building-2',
+  Geopolitics: 'globe', Crypto: 'bitcoin', 'Science & Tech': 'cpu', 'Climate & Weather': 'cloud-sun', Health: 'heart-pulse',
+  Culture: 'clapperboard', Sports: 'trophy', Mentions: 'megaphone', Transportation: 'plane', Other: 'layers',
+};
+export const NAV_CATEGORIES = ['Politics', 'Elections', 'Economics', 'Finance', 'Geopolitics', 'Crypto', 'Sports', 'Science & Tech', 'Climate & Weather', 'Culture'];

@@ -2,9 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom';
 import { ICONS } from '../icons.js';
 import { cx, fmtPP, fmtAge, fmtTimeSec, fmtSignedCents } from '../lib/format.js';
-import { useFocusTrap, useDismiss, useNow, useStableId } from '../lib/hooks.js';
-import { VENUES } from '../data/fixtures.js';
-import { freshnessOf } from '../data/quotes.js';
+import { useFocusTrap, useDismiss, useStableId } from '../lib/hooks.js';
 import { useStore } from '../store.jsx';
 
 const { useRef, useState, forwardRef } = React;
@@ -84,15 +82,13 @@ export function Badge({ tone = 'neutral', icon, children, className, tip, size, 
   );
 }
 
-export function DemoTag({ className }) {
-  return <span className={cx('demo-tag', className)} data-tip="Simulated data, fictional venues" tabIndex={0}>Demo</span>;
-}
-
+// Live venues shown in Banthom.
+export const VENUE_INFO = { kalshi: { code: 'KAL', name: 'Kalshi' }, polymarket: { code: 'PM', name: 'Polymarket' } };
 export function VenueBadge({ venue, full }) {
-  const v = VENUES[venue];
+  const v = VENUE_INFO[venue] || { code: String(venue || '?').slice(0, 3).toUpperCase(), name: String(venue || 'Unknown venue') };
   return (
-    <span className={cx('venue', `venue-${venue.toLowerCase()}`)} data-tip={full ? undefined : `${v.name} (fictional)`}>
-      <span className="venue-code" aria-hidden={full ? undefined : 'true'}>{venue}</span>
+    <span className={cx('venue', `venue-live-${venue}`)} data-tip={full ? undefined : v.name}>
+      <span className="venue-code" aria-hidden={full ? undefined : 'true'}>{v.code}</span>
       {full ? <span className="venue-name">{v.name}</span> : <span className="sr-only">{v.name}</span>}
     </span>
   );
@@ -109,45 +105,6 @@ export function Delta({ value, unit = 'pp', digits = 1, className, size }) {
       <span>{text}</span>
     </span>
   );
-}
-
-export function Freshness({ mk, q, variant = 'cell' }) {
-  const now = useNow();
-  const f = freshnessOf(mk, q, now);
-  if (f.status === 'resolved') return <Badge tone="neutral" icon="circle-check">Resolved</Badge>;
-  if (f.status === 'delayed') {
-    return (
-      <Badge tone="warning" icon="clock" tip={`Delayed data. Last updated ${fmtTimeSec(q.observedAt)}. Quotes may no longer be actionable.`}>
-        {variant === 'long' ? `Delayed · last updated ${fmtAge(f.age)} ago` : `Delayed · ${fmtAge(f.age)}`}
-      </Badge>
-    );
-  }
-  if (variant === 'cell') return <span className="age" data-tip={`Observed ${fmtTimeSec(q.observedAt)}`}>{fmtAge(f.age)}</span>;
-  return <Badge tone="success" icon="circle-dot" tip={`Observed ${fmtTimeSec(q.observedAt)}`}>Recent · {fmtAge(f.age)}{variant === 'long' ? ' ago' : ''}</Badge>;
-}
-
-export const MATCH_STATUS = {
-  verified: { tone: 'success', icon: 'badge-check', label: 'Verified match', short: 'Verified' },
-  candidate: { tone: 'warning', icon: 'circle-dashed', label: 'Potential match · review required', short: 'Review required' },
-  nonequivalent: { tone: 'muted', icon: 'equal-not', label: 'Not equivalent', short: 'Not equivalent' },
-  unknown: { tone: 'muted', icon: 'circle-help', label: 'Unknown', short: 'Unknown' },
-};
-export function MatchBadge({ status, short }) {
-  const s = MATCH_STATUS[status] || MATCH_STATUS.unknown;
-  return <Badge tone={s.tone} icon={s.icon}>{short ? s.short : s.label}</Badge>;
-}
-
-export const TRUST = {
-  observed: { icon: 'eye', label: 'Observed', tip: 'Directly observed in source data or a cited document.' },
-  inferred: { icon: 'lightbulb', label: 'Inferred', tip: 'Interpretation by the research model. Not independently verified.' },
-  unknown: { icon: 'circle-help', label: 'Unknown', tip: 'Not enough reliable evidence to say.' },
-};
-export function TrustTag({ tag }) {
-  const t = TRUST[tag];
-  return <Badge tone={`trust-${tag}`} icon={t.icon} tip={t.tip}>{t.label}</Badge>;
-}
-export function AiTag({ children = 'AI-assisted' }) {
-  return <Badge tone="ai" icon="sparkles" tip="Written by a research model from cited sources. Check sources before relying on it.">{children}</Badge>;
 }
 
 export function InfoTip({ text, label = 'More information', pos }) {

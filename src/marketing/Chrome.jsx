@@ -7,14 +7,13 @@ const { useState, useEffect, useRef } = React;
 
 export const NAV = {
   features: [
-    { href: '#features-market-screener', icon: 'list-filter', label: 'Market screener', desc: 'Filter by category, venue, liquidity and expiry.' },
-    { href: '#features-market-comparison', icon: 'git-compare-arrows', label: 'Market comparison', desc: 'Rule parity, fees and depth across venues.' },
-    { href: '#features-ai-research', icon: 'sparkles', label: 'AI research', desc: 'Cited summaries with inference labelled.' },
-    { href: '#features-alerts-watchlists', icon: 'bell', label: 'Alerts and watchlists', desc: 'Thresholds, cooldowns and delivery you control.' },
+    { href: '#features-market-screener', icon: 'list-filter', label: 'Market screener', desc: 'Filter by category, venue and closing date.' },
+    { href: '#features-market-comparison', icon: 'git-compare-arrows', label: 'Market comparison', desc: 'The same question on Kalshi and Polymarket.' },
+    { href: '#features-alerts-watchlists', icon: 'bell', label: 'Alerts and watchlists', desc: 'Thresholds and cooldowns you control.' },
   ],
   solutions: [
     { href: '#solutions-traders', icon: 'activity', label: 'For traders', desc: 'Screen faster, verify the contract, see the spread.' },
-    { href: '#solutions-researchers', icon: 'microscope', label: 'For researchers', desc: 'Historical probabilities, sourced timelines, exports.' },
+    { href: '#solutions-researchers', icon: 'microscope', label: 'For researchers', desc: 'Price history, every outcome, the venues’ rules.' },
   ],
   resources: [
     { href: '#resources', icon: 'book-open', label: 'Guides', desc: 'Learn to read event markets.' },
@@ -85,8 +84,7 @@ export function MarketingHeader({ route }) {
           </ul>
         </nav>
         <div className="mkt-actions">
-          <a href="#sign-in" className="btn btn-ghost btn-md nav-login">Log in</a>
-          <Button variant="primary" href="#app-dashboard" className="nav-cta">Explore demo</Button>
+          <Button variant="primary" href="#app-dashboard" className="nav-cta">Open the terminal</Button>
           <IconButton icon="menu" label="Open menu" className="mkt-menu-btn" onClick={() => setDrawer(true)} aria-expanded={drawer} tip={false} />
         </div>
       </div>
@@ -102,9 +100,8 @@ export function MarketingHeader({ route }) {
           {NAV.resources.map((it) => <a key={it.href} href={it.href} className="drawer-link drawer-sub"><Icon n={it.icon} size={18} />{it.label}</a>)}
         </nav>
         <div className="drawer-ctas">
-          <Button variant="primary" size="lg" block href="#app-dashboard">Explore the demo terminal</Button>
-          <Button variant="secondary" size="lg" block href="#sign-up">Create free account</Button>
-          <Button variant="ghost" size="lg" block href="#sign-in">Log in</Button>
+          <Button variant="primary" size="lg" block href="#app-dashboard">Open the terminal</Button>
+          <p className="muted small">No account needed. Watchlists and alerts are saved in your browser.</p>
         </div>
       </Sheet>
     </header>
@@ -137,9 +134,8 @@ export function MarketingFooter() {
         </div>
         <div className="footer-bottom">
           <p className="footer-disclaimer">
-            Prices shown on Banthom are market-implied proxies from the venues listed with each quote, not guaranteed probabilities, and
-            nothing here is investment advice. Venue data appears only where licensed and is attributed at the point of display.
-            This prototype uses simulated data and fictional venues.
+            Prices on Banthom come from Kalshi’s and Polymarket’s public market data and are attributed to their venue wherever they
+            appear. They are market-implied proxies, not guaranteed probabilities, and nothing here is investment advice.
           </p>
           <div className="footer-legal">
             <span>© 2026 Banthom (working name)</span>

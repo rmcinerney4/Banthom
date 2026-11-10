@@ -120,6 +120,10 @@ const TAG_SECTION = new Map(Object.entries({
   tech: 'Tech', ai: 'Tech', 'artificial-intelligence': 'Tech', openai: 'Tech', science: 'Climate & Science', climate: 'Climate & Science', 'climate-science': 'Climate & Science', weather: 'Climate & Science', space: 'Climate & Science', 'climate-&-science': 'Climate & Science',
   culture: 'Culture', 'pop-culture': 'Culture', entertainment: 'Culture', movies: 'Culture', music: 'Culture', awards: 'Culture', 'tv': 'Culture', celebrities: 'Culture', 'box-office': 'Culture',
   world: 'World', 'world-affairs': 'World', mentions: 'Mentions',
+  // Seen in production under Other (Nov 10, 2026)
+  'united-nations': 'Geopolitics', poltics: 'Politics', nomination: 'Elections', 'supreme-court': 'Politics', judicial: 'Politics',
+  uk: 'Politics', 'united-kingdom': 'Politics', 'uk-labour-leadership': 'Politics', labour: 'Politics', 'keir-starmer': 'Politics',
+  'fed-chair': 'Economy', dnc: 'Politics', democrats: 'Politics', republicans: 'Politics', 'democratic-national-committee': 'Politics',
 }));
 const slugify = (x) => String(x || '').trim().toLowerCase().replace(/\s+/g, '-');
 function sectionOf(...tagLists) {
@@ -175,7 +179,14 @@ function compactMarket(m, observedAt) {
     oi: null,
     closes: ts(m.endDate || m.endDateIso),
     observedAt,
+    ...outcomeNames(m),
   };
+}
+// Most markets are Yes/No. For the rest (e.g. two teams) keep the names: "Yes" is the first outcome.
+function outcomeNames(m) {
+  const oc = jsonList(m.outcomes);
+  if (oc.length !== 2 || (String(oc[0]).toLowerCase() === 'yes' && String(oc[1]).toLowerCase() === 'no')) return {};
+  return { yes: String(oc[0]), no: String(oc[1]) };
 }
 const mid2 = (b, a) => (b != null && a != null ? (b + a) / 2 : null);
 
@@ -264,6 +275,20 @@ export function start() {
       await sleep(wait);
     }
   })();
+}
+
+// Read-only view of the snapshot for the cross-venue layer (server/hub.mjs).
+export const snapshot = () => ({ markets: state.markets, events: state.events, byEvent: state.byEvent, lastPassAt: state.lastPassAt || 0 });
+
+// An event with its open markets, for event pages.
+export async function eventDetail(id) {
+  const known = state.events.get(id);
+  if (known) return { event: known, markets: (state.byEvent.get(id) || []).map((x) => state.markets.get(x)).filter(Boolean) };
+  const e = await getJSON(GAMMA, `/events/${encodeURIComponent(id)}`, null, interactive);
+  if (!e || e.id == null) throw new HttpError(404, 'Event not found');
+  const at = Date.now();
+  const markets = (e.markets || []).filter(isOpen).map((m) => { const c = compactMarket({ ...m, events: [e] }, at); c.mid = mid2(c.bid, c.ask); return c; });
+  return { event: eventOf({ id: e.id, question: e.title, events: [e], tags: e.tags }), markets };
 }
 
 export const clientConfig = () => ({ refreshSeconds: REFRESH_S, recentSeconds: RECENT_S, categories: [] });

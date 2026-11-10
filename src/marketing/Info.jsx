@@ -1,6 +1,5 @@
 import React from 'react';
-import { Icon, Button, Badge, Segmented, MATCH_STATUS } from '../ui/core.jsx';
-import { VENUES } from '../data/fixtures.js';
+import { Icon, Button, Badge, Segmented } from '../ui/core.jsx';
 import { cx } from '../lib/format.js';
 import { go } from '../lib/hooks.js';
 
@@ -8,29 +7,26 @@ const { useState, useEffect } = React;
 
 // ---------------------------------------------------------------- Pricing
 const PLANS = [
-  { id: 'free', name: 'Free', price: 0, who: 'For getting oriented', cta: 'Create free account', href: '#sign-up',
-    feats: ['Market explorer and contract rules', 'One watchlist, three alerts', '7 days of price history', 'Event pages and timelines'] },
-  { id: 'plus', name: 'Plus', price: 29, who: 'For regular research', cta: 'Start with Plus', href: '#sign-up',
-    feats: ['90 days of price history', 'Five watchlists, 25 alerts', 'Verified cross-venue comparisons', '50 AI research summaries a month'] },
-  { id: 'pro', name: 'Pro', price: 99, who: 'For daily trading prep and analysis', cta: 'Start with Pro', href: '#sign-up', featured: true,
-    feats: ['Full price history', 'Modeled depth, fees and spread estimates', 'Unlimited AI research with exports where licensed', '100 alerts and unlimited workspaces'] },
+  { id: 'free', name: 'Free', price: 0, who: 'For getting oriented', cta: 'Open the terminal', href: '#app-dashboard',
+    feats: ['Market explorer and venue rules', 'Price history and order books', 'One watchlist, three alerts', 'Event pages'] },
+  { id: 'plus', name: 'Plus', price: 29, who: 'For regular research', cta: 'Get in touch', href: '#contact',
+    feats: ['Watchlists on every device', 'Five watchlists, 25 alerts', 'Email alerts', 'Suggested cross-venue pairs with prices'] },
+  { id: 'pro', name: 'Pro', price: 99, who: 'For daily trading prep and analysis', cta: 'Get in touch', href: '#contact', featured: true,
+    feats: ['Unlimited watchlists, 100 alerts', 'Modeled depth, fees and spread estimates', 'Exports where licensed', 'Unlimited saved views and workspaces'] },
   { id: 'inst', name: 'Institutional', price: null, who: 'For teams with governance needs', cta: 'Contact sales', href: '#contact',
-    feats: ['Everything in Pro', 'Team workspaces and permissions (planned)', 'Data rights reviewed for your use case', 'Named contact and onboarding'] },
+    feats: ['Everything in Pro', 'Team workspaces and permissions', 'Data rights reviewed for your use case', 'Named contact and onboarding'] },
 ];
 const ROWS = [
   ['Explore', null],
-  ['Market explorer and screener', ['yes', 'yes', 'yes', 'yes']],
+  ['Market explorer across Kalshi and Polymarket', ['yes', 'yes', 'yes', 'yes']],
+  ['Venue rules, order books and price history', ['yes', 'yes', 'yes', 'yes']],
   ['Saved views', ['1', '10', 'Unlimited', 'Unlimited']],
-  ['Contract rules with source and timestamps', ['yes', 'yes', 'yes', 'yes']],
-  ['Price history', ['7 days', '90 days', 'Full history', 'Full history']],
-  ['Analyze', null],
-  ['Event intelligence timelines', ['yes', 'yes', 'yes', 'yes']],
-  ['Cross-venue comparison', ['Match status only', 'Verified pairs with prices', 'Adds modeled depth and fees', 'Adds modeled depth and fees']],
-  ['AI research summaries', ['5 a month', '50 a month', 'Unlimited, fair use', 'Custom']],
+  ['Compare', null],
+  ['Suggested Kalshi–Polymarket pairs', ['Pairs only', 'With prices', 'Adds modeled depth and fees', 'Adds modeled depth and fees']],
   ['Monitor', null],
   ['Watchlists', ['1', '5', 'Unlimited', 'Unlimited']],
-  ['Alerts (in-app; email after verification)', ['3', '25', '100', 'Custom']],
-  ['Workspaces', ['no', '3', 'Unlimited', 'Shared (planned)']],
+  ['Alerts', ['3, in the app', '25, in the app and by email', '100, in the app and by email', 'Custom']],
+  ['Workspaces', ['no', '3', 'Unlimited', 'Shared']],
   ['Data', null],
   ['CSV export', ['no', 'no', 'Where licensed', 'Where licensed']],
   ['Support', ['Help center', 'Email', 'Priority email', 'Named contact']],
@@ -50,7 +46,7 @@ export function Pricing() {
         <div className="container page-hero-inner">
           <p className="eyebrow">Pricing</p>
           <h1 className="mkt-h1 page-hero-h1" tabIndex={-1} data-route-focus>Research with the right level of detail.</h1>
-          <p className="hero-sub">Start free; add advanced tools when you need them. Plan limits depend on permitted data access and are shown before checkout.</p>
+          <p className="hero-sub">Banthom is free while in preview. The plans below are what we plan to offer once accounts exist; limits will depend on permitted data access and will be shown before checkout.</p>
           <div className="pricing-toggle">
             <Segmented size="md" label="Billing cycle" value={cycle} onChange={setCycle} options={[{ id: 'monthly', label: 'Monthly' }, { id: 'annual', label: 'Annual' }]} />
             {cycle === 'annual' && <span className="muted small">Annual pricing is pending approval. Monthly prices are shown.</span>}
@@ -59,7 +55,7 @@ export function Pricing() {
       </section>
       <section className="mkt-sec pt-0" aria-label="Plans">
         <div className="container">
-          <div className="placeholder-note"><Icon n="info" size={16} />Placeholder pricing from the design brief. Final prices, limits and trial terms are not decided.</div>
+          <div className="placeholder-note"><Icon n="info" size={16} />Today everything in the terminal is free and needs no account: every market, comparisons, and watchlists and alerts saved in your browser. Prices below are placeholders from the design brief; final prices, limits and trial terms are not decided.</div>
           <div className="plans">
             {PLANS.map((p) => (
               <div key={p.id} className={cx('plan-card', p.featured && 'is-featured')}>
@@ -99,7 +95,7 @@ export function Pricing() {
           <div className="info-cols">
             <div>
               <h2 className="mkt-h3-sm">Data coverage and latency</h2>
-              <p>Quotes refresh as often as each venue’s terms and connection allow. Banthom does not promise real-time data: every quote shows when it was observed, and sources that fall behind are marked Delayed.</p>
+              <p>Banthom refreshes every open Kalshi and Polymarket market every few minutes and fetches a market’s quote and order book when you open it. It doesn’t promise real-time data: every quote shows when it was fetched, and a venue that falls behind is marked Delayed.</p>
             </div>
             <div>
               <h2 className="mkt-h3-sm">Export restrictions</h2>
@@ -115,7 +111,7 @@ export function Pricing() {
             <div className="sec-head"><h2 className="mkt-h2">Billing questions</h2></div>
             <div className="faq">
               {[
-                ['Is there a free trial?', 'Trial terms are not decided yet. The Free plan stays available with no time limit.'],
+                ['Is there a free trial?', 'Everything is free while Banthom is in preview. Trial terms for paid plans are not decided yet.'],
                 ['Can I change plans later?', 'Yes. Upgrades and downgrades happen in Settings → Billing, and the amount due is shown before you confirm.'],
                 ['How do I cancel?', 'Cancel from Settings → Billing at any time. You keep paid features until the end of the billing period, then move to Free. Saved filters remain available.'],
                 ['Do you offer refunds?', 'The refund policy will be published with the final terms before launch.'],
@@ -130,7 +126,7 @@ export function Pricing() {
       <section className="closing" aria-labelledby="pricing-cta">
         <div className="container closing-inner">
           <h2 className="mkt-h2" id="pricing-cta">Start researching for free.</h2>
-          <div className="row"><Button variant="primary" size="lg" href="#sign-up">Create free account</Button><Button variant="ghost" size="lg" href="#app-dashboard">Explore the demo</Button></div>
+          <div className="row"><Button variant="primary" size="lg" href="#app-dashboard">Open the terminal</Button><Button variant="ghost" size="lg" href="#methodology">How the data works</Button></div>
         </div>
       </section>
     </>
@@ -139,17 +135,21 @@ export function Pricing() {
 
 // ---------------------------------------------------------------- Methodology
 const TOC = [
-  ['coverage', 'Source coverage and permissions'],
+  ['coverage', 'Sources and coverage'],
   ['entities', 'Events, markets and outcomes'],
   ['prices', 'Price definitions'],
-  ['freshness', 'Timestamps and feed freshness'],
-  ['volume', 'Volume, liquidity and open interest'],
-  ['charts', 'Chart aggregation and missing data'],
-  ['matching', 'Contract matching'],
-  ['revisions', 'Revisions and resolutions'],
-  ['ai', 'AI source standards'],
+  ['freshness', 'Timestamps and freshness'],
+  ['volume', 'Volume and open interest'],
+  ['charts', 'Price history and missing data'],
+  ['matching', 'Suggested cross-venue pairs'],
+  ['closed', 'Closed and settled markets'],
+  ['saved', 'Watchlists and alerts'],
   ['changes', 'Methodology change log'],
   ['contact', 'Contact the data team'],
+];
+const SOURCES = [
+  ['Kalshi', 'Trade API v2, public market data', 'Every few minutes (one pass covers every open market)', '8 min', '$1.00 per contract, US dollars', 'Contracts'],
+  ['Polymarket', 'Gamma, CLOB and Data APIs, public market data', 'Every few minutes (one pass covers every open market)', '8 min', '$1.00 USDC per share', 'USDC'],
 ];
 
 export function Methodology() {
@@ -174,8 +174,8 @@ export function Methodology() {
         <div className="container page-hero-inner">
           <p className="eyebrow">Methodology and data</p>
           <h1 className="mkt-h1 page-hero-h1" tabIndex={-1} data-route-focus>Know what each number means.</h1>
-          <p className="hero-sub">Every number has a definition. Every data point has a source. This page explains both, including where the numbers stop being reliable.</p>
-          <div className="row"><Button variant="secondary" onClick={() => jump('prices')} iconRight="arrow-down">Read the price definitions</Button><Badge tone="muted">Version 0.1 · draft for review</Badge></div>
+          <p className="hero-sub">Every number in Banthom comes from Kalshi or Polymarket. This page explains where each one comes from, how current it is and where it stops being reliable.</p>
+          <div className="row"><Button variant="secondary" onClick={() => jump('prices')} iconRight="arrow-down">Read the price definitions</Button><Badge tone="muted">Version 0.2 · Nov 10, 2026</Badge></div>
         </div>
       </section>
       <section className="mkt-sec pt-0">
@@ -199,102 +199,104 @@ export function Methodology() {
                 <strong>The three things to remember</strong>
                 <ul>
                   <li>A contract price is a market-implied proxy, not a certain probability.</li>
-                  <li>Contracts on different venues can look alike and still settle differently.</li>
+                  <li>Contracts on Kalshi and Polymarket can look alike and still settle differently.</li>
                   <li>A quoted price difference can disappear because of execution timing, order depth, fees, slippage, limits or availability.</li>
                 </ul>
               </div>
             </div>
 
             <section id="m-coverage" tabIndex={-1}>
-              <h2>Source coverage and permissions</h2>
-              <p>Banthom ingests data only from venues and publishers whose current commercial terms allow display, and only within the limits those terms set. When a venue is unavailable, the terminal keeps working with the venues that are.</p>
+              <h2>Sources and coverage</h2>
+              <p>Banthom reads Kalshi’s and Polymarket’s public market data. It lists every open market on both venues except Kalshi’s multi-leg combination markets. A background pass collects every open market’s quote; when you open a market, Banthom also fetches its quote, order book and price history directly from the venue.</p>
               <div className="table-scroll"><table className="table">
-                <caption className="table-caption">Sources in this prototype. Both venues are fictional.</caption>
-                <thead><tr><th scope="col">Venue</th><th scope="col">Data</th><th scope="col">Recent if updated within</th><th scope="col">Settlement</th><th scope="col">Export</th></tr></thead>
+                <caption className="table-caption">Sources shown in Banthom</caption>
+                <thead><tr><th scope="col">Venue</th><th scope="col">Data</th><th scope="col">Full refresh</th><th scope="col">Recent if updated within</th><th scope="col">Settlement</th><th scope="col">Volume unit</th></tr></thead>
                 <tbody>
-                  {Object.values(VENUES).map((v) => (
-                    <tr key={v.id}><td><span className="strong">{v.name}</span> <span className="muted">({v.id})</span></td><td>Quotes, trades, rules (simulated)</td><td className="num">{v.recentS / 60} min</td><td>{v.currency === 'USD' ? '$1.00 per contract' : '1.00 USDC per share'}</td><td>Not permitted in demo</td></tr>
+                  {SOURCES.map(([name, data, refresh, recent, settle, vol]) => (
+                    <tr key={name}><td className="strong">{name}</td><td>{data}</td><td>{refresh}</td><td className="num">{recent}</td><td>{settle}</td><td>{vol}</td></tr>
                   ))}
                 </tbody>
               </table></div>
+              <p>When a venue can’t be reached, Banthom keeps showing its last good data, marks it Delayed and keeps retrying. The other venue keeps working.</p>
             </section>
 
             <section id="m-entities" tabIndex={-1}>
               <h2>Events, markets and outcomes</h2>
               <p>These are separate things with separate identifiers, and the terminal never mixes them up.</p>
               <ol className="entity-chain">
-                <li><span className="entity-k">Event</span><span>A real-world topic, such as the Fed’s December 2026 decision.</span></li>
-                <li><span className="entity-k">Market</span><span>One contract question on one venue, such as “Will the Fed cut at its December 2026 meeting?” on Arden.</span></li>
-                <li><span className="entity-k">Outcome</span><span>A side of that market (Yes or No), with its own quotes.</span></li>
-                <li><span className="entity-k">Quote</span><span>A bid, ask or trade observed at a specific time.</span></li>
+                <li><span className="entity-k">Event</span><span>A real-world question with one or more possible results, such as who wins a championship.</span></li>
+                <li><span className="entity-k">Market</span><span>One contract on one venue, such as “Will this team win?” within that event.</span></li>
+                <li><span className="entity-k">Outcome</span><span>A side of that market (Yes or No), with its own quotes. Some Polymarket markets name their sides, such as two teams.</span></li>
+                <li><span className="entity-k">Quote</span><span>A bid, ask or trade price, with the time Banthom fetched it.</span></li>
               </ol>
-              <p>Clean titles are written for reading. The venue’s own title and identifier are always kept and shown on the market page.</p>
+              <p>Titles, tickers and rule text are shown as each venue publishes them. Categories are folded into one shared list: Kalshi’s categories and Polymarket’s tags are mapped onto the same headings, such as Politics, Economics or Sports.</p>
             </section>
 
             <section id="m-prices" tabIndex={-1}>
               <h2>Price definitions</h2>
               <dl className="defs">
-                <div><dt>Yes bid</dt><dd>The highest price someone is currently offering to pay for a Yes contract. You could sell Yes at this price, for the size shown.</dd></div>
-                <div><dt>Yes ask</dt><dd>The lowest price someone is currently offering to sell a Yes contract at. You could buy Yes at this price, for the size shown.</dd></div>
+                <div><dt>Yes bid</dt><dd>The highest price someone is currently offering to pay for Yes. You could sell Yes at this price, for the size shown.</dd></div>
+                <div><dt>Yes ask</dt><dd>The lowest price someone is currently offering to sell Yes at. On Kalshi, which lists bids only, the Yes ask is 100¢ minus the best No bid.</dd></div>
                 <div><dt>Last trade</dt><dd>The price of the most recent trade. It can be old, and it is never used in place of a missing bid or ask.</dd></div>
-                <div><dt>Midpoint</dt><dd>The average of the displayed best bid and ask. It is not a guaranteed executable price. <code className="formula">mid = (bid + ask) / 2</code></dd></div>
+                <div><dt>Midpoint</dt><dd>The average of the best bid and ask. It is not a guaranteed executable price. <code className="formula">mid = (bid + ask) / 2</code></dd></div>
                 <div><dt>Spread</dt><dd>Ask minus bid, in cents. <code className="formula">spread = ask − bid</code></dd></div>
                 <div><dt>Implied chance (indicative)</dt><dd>The midpoint read as a share of the $1.00 payout. Shown only when both a bid and an ask exist and the spread is 5¢ or less. <code className="formula">implied chance ≈ mid ÷ 100¢</code></dd></div>
+                <div><dt>24h change</dt><dd>Kalshi: the change in the Yes midpoint from the quote a day earlier. Polymarket: the venue’s own 24-hour price change.</dd></div>
                 <div><dt>Percentage points (pp)</dt><dd>Change in a price expressed as a chance. A move from 58¢ to 63¢ is +5 pp, not +5% (which would be a move to about 60.9¢).</dd></div>
               </dl>
+              <p>A missing bid or ask is shown as —. Banthom never fills one in from another number.</p>
             </section>
 
             <section id="m-freshness" tabIndex={-1}>
-              <h2>Timestamps and feed freshness</h2>
-              <p>Every quote carries the venue’s timestamp and the time Banthom received it. Both are stored in UTC and displayed in your chosen timezone (Eastern time in this prototype).</p>
+              <h2>Timestamps and freshness</h2>
+              <p>Every quote carries the time Banthom fetched it from the venue. Times are shown in US Eastern time.</p>
               <ul className="status-legend">
-                <li><Badge tone="success" icon="radio">Live</Badge><span>Actively streaming and current. Never shown for a record older than its threshold.</span></li>
-                <li><Badge tone="success" icon="circle-dot">Recent</Badge><span>Updated within the venue’s threshold (2 minutes for Arden, 5 for Brisa in this demo).</span></li>
-                <li><Badge tone="warning" icon="clock">Delayed</Badge><span>The threshold has passed. The last valid quote stays visible with its time, and claims of executable pricing are switched off.</span></li>
-                <li><Badge tone="muted" icon="wifi-off">Unavailable</Badge><span>No usable data from the source. Shown with the last valid timestamp.</span></li>
+                <li><Badge tone="success" icon="circle-dot">Recent</Badge><span>Fetched within 8 minutes. A full pass over every open market takes a few minutes on each venue.</span></li>
+                <li><Badge tone="warning" icon="clock">Delayed</Badge><span>Older than that. The last quote stays visible with its time; alerts don’t fire on it.</span></li>
+                <li><Badge tone="muted" icon="clock">Waiting for data</Badge><span>Banthom hasn’t received this quote yet, for example right after the server starts.</span></li>
               </ul>
-              <p>The demo feed is simulated, so it is labelled “Demo feed” and never “Live”.</p>
+              <p>The “Live” tag on a market page means the data is real and comes from the venue. It doesn’t mean streaming: how current a quote is always appears next to it.</p>
             </section>
 
             <section id="m-volume" tabIndex={-1}>
-              <h2>Volume, liquidity and open interest</h2>
-              <p><strong>Volume</strong> is what traded over a period. Venues measure it differently: Arden reports contracts, Brisa reports notional value in USDC, so the unit is always printed and volumes are not added across venues. <strong>Liquidity</strong> here means the size available at the best bid or ask right now. <strong>Open interest</strong> is the number of contracts outstanding.</p>
+              <h2>Volume and open interest</h2>
+              <p><strong>Volume</strong> is what traded over the last 24 hours. Kalshi reports contracts and Polymarket reports USDC, so the unit is printed with every figure. To rank markets across both venues, Banthom converts Kalshi volume to an approximate dollar figure (contracts × the Yes price) and uses Polymarket’s USDC figure as it is. <strong>Open interest</strong> is the number of contracts outstanding, where the venue reports it.</p>
             </section>
 
             <section id="m-charts" tabIndex={-1}>
-              <h2>Chart aggregation and missing data</h2>
-              <p>Charts plot the last observation in each interval: 1 minute for the 1-hour view, 5 minutes for 1 day, 30 minutes for 1 week, 2 hours for 1 month and 6 hours since listing. The tooltip names the interval. When a source sends nothing, the chart shows a gap. Gaps are never filled in, and lines are never smoothed over large steps.</p>
-              <p>Markers on a chart show when something happened. A move that follows a headline is labelled inferred unless a source establishes the link.</p>
+              <h2>Price history and missing data</h2>
+              <p>Price history comes from each venue: 1-minute values for one day, hourly values for one week and one month, and daily values since listing. Kalshi charts plot the midpoint of each candle’s closing Yes bid and ask; Polymarket charts plot the venue’s recorded Yes price. The interval is named under every chart.</p>
+              <p>When a venue has no price for an interval, the chart shows a gap. Gaps are never filled in, and lines are never drawn across them.</p>
             </section>
 
             <section id="m-matching" tabIndex={-1}>
-              <h2>Contract matching</h2>
-              <p>An algorithm proposes pairs of similar contracts across venues. A reviewer then compares the rules clause by clause: outcome definition, resolution source, deadline and timezone, edge cases, and cancellation or void policy.</p>
-              <ul className="status-legend">
-                {['verified', 'candidate', 'nonequivalent', 'unknown'].map((k) => (
-                  <li key={k}><Badge tone={MATCH_STATUS[k].tone} icon={MATCH_STATUS[k].icon}>{MATCH_STATUS[k].label}</Badge>
-                    <span>{{ verified: 'Reviewed by a person and still current. Price differences are shown, after fees.', candidate: 'Proposed by the algorithm, not yet reviewed. No price comparison is shown.', nonequivalent: 'Reviewed and found to settle differently. No price comparison is shown.', unknown: 'Rules are missing or unreadable. No price comparison is shown.' }[k]}</span>
-                  </li>
-                ))}
+              <h2>Suggested cross-venue pairs</h2>
+              <p>Banthom suggests where Kalshi and Polymarket list the same question. Every ten minutes it compares active markets that traded at least $100 in the past 24 hours:</p>
+              <ul>
+                <li>Titles are normalised (common words dropped, synonyms such as “cut” and “decrease” aligned) and compared word by word.</li>
+                <li>Numbers must agree (thresholds, basis points, prices), years must agree, and direction words such as “above” and “below” must agree.</li>
+                <li>Closing dates must be within seven days of each other.</li>
+                <li>For Polymarket markets with named sides, the Yes side must appear in the Kalshi market.</li>
+                <li>A pair is kept only when each market is the other’s best match.</li>
               </ul>
-              <p>No automated confidence score is treated as equivalence. Verified matches carry a review date and are re-checked when either venue changes its rules.</p>
-              <p className="formula-block"><code>indicative gross margin per pair = 100¢ − Yes ask (venue A) − No ask (venue B)</code><span>Only for verified, economically equivalent $1 contracts, and before fees, capital lock-up, execution risk and venue limits. If parity is not confirmed, the figure is suppressed.</span></p>
+              <p>Every pair is labelled <strong>suggested</strong> and <strong>unverified</strong>. Nobody has reviewed the rules, and the venues can still settle differently: different sources, deadlines, timezones or edge cases. The match percentage measures how closely the titles agree; it isn’t a probability that the contracts are equivalent.</p>
+              <p className="formula-block"><code>gap = Kalshi Yes midpoint − Polymarket Yes midpoint</code><span>In percentage points, before fees, order depth, execution timing, settlement currency and venue limits. A gap is not an opportunity until both rule sets have been read.</span></p>
             </section>
 
-            <section id="m-revisions" tabIndex={-1}>
-              <h2>Revisions and resolutions</h2>
-              <p>Raw observations are stored separately from derived values, so any chart point can be reproduced. Corrections are recorded with what changed and why. Resolved markets keep their full history and the source used to settle them.</p>
+            <section id="m-closed" tabIndex={-1}>
+              <h2>Closed and settled markets</h2>
+              <p>Banthom lists open markets. A market that closes or settles drops out of lists at the next refresh. Its page keeps loading for as long as the venue serves it, with its status shown. Watchlists keep the market’s name so you can remove it.</p>
             </section>
 
-            <section id="m-ai" tabIndex={-1}>
-              <h2>AI source standards</h2>
-              <p>Research summaries are built only from permitted sources and Banthom’s own price history. Each claim links to its evidence and is labelled observed, inferred or unknown. The model and methodology version are recorded with every summary, and earlier versions stay visible after a correction.</p>
-              <p>If recent sources can’t be retrieved, Banthom says “Unable to verify recent sources” and doesn’t generate unsupported claims.</p>
+            <section id="m-saved" tabIndex={-1}>
+              <h2>Watchlists and alerts</h2>
+              <p>Banthom has no accounts yet. Watchlists, alert rules and alert history are saved in your browser and never sent to Banthom’s server. Alerts are checked every 30 seconds while Banthom is open, only against quotes fetched within the freshness window, and at most once per rule’s cooldown.</p>
             </section>
 
             <section id="m-changes" tabIndex={-1}>
               <h2>Methodology change log</h2>
               <ul className="changelog">
+                <li><span className="mono">v0.2</span><span>Nov 10, 2026</span><span>Real Kalshi and Polymarket data replaces the simulated venues. Suggested cross-venue pairs replace reviewed matches. Research summaries are removed until real sources are in place.</span></li>
                 <li><span className="mono">v0.1</span><span>Nov 6, 2026</span><span>Draft methodology for the prototype review.</span></li>
               </ul>
             </section>

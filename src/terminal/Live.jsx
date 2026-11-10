@@ -1,11 +1,13 @@
-// Live venue pages (Kalshi, Polymarket). Real market data from the Banthom server; nothing here is simulated.
+// Market pages (Kalshi and Polymarket). Real market data from the Banthom server; nothing here is simulated.
 import React from 'react';
 import { Icon, Button, Badge, Panel, PageHeader, EmptyState, Delta, Segmented, Banner, KeyValue, InfoTip, Skeleton, Popover } from '../ui/core.jsx';
 import { PriceChart, OrderLadder } from '../charts/charts.jsx';
 import { useMedia, go } from '../lib/hooks.js';
-import { fmtCentsAuto, fmtCents, fmtDate, fmtDateShort, fmtDateTimeShort, fmtTimeSec, fmtAge, fmtAgeLong, fmtInt, fmtChance, fmtVolume, cx, isNum, pluralize } from '../lib/format.js';
+import { fmtCentsAuto, fmtCents, fmtDate, fmtDateShort, fmtDateTimeShort, fmtTimeSec, fmtAge, fmtAgeLong, fmtInt, fmtChance, fmtVolume, fmtPP, cx, isNum, pluralize } from '../lib/format.js';
 import { useTitle, SortHeader, rowKeyNav } from './kit.jsx';
-import { LIVE_LIST, usePolled, useRealNow, liveFreshness, midOf2, change24 } from '../data/live.js';
+import { LIVE_VENUES, usePolled, useRealNow, liveFreshness, midOf2, change24, API2, eventHref, marketHref, compareHref, venueName, slugOf, buildSeries } from '../data/live.js';
+import { StarButton, WatchMenu, usePageCrumbs } from './kit.jsx';
+import { AlertEditor } from './Alerts.jsx';
 
 const { useState, useMemo, useEffect, useRef } = React;
 
@@ -37,193 +39,6 @@ function Fresh({ v, observedAt, variant = 'strip' }) {
   return <Badge tone="success" icon="circle-dot" tip={`Fetched from ${v.name} ${fmtTimeSec(observedAt)}`}>Recent · {fmtAge(f.age)}</Badge>;
 }
 
-// Replaces the demo banner on live pages.
-export function LiveBanner({ v }) {
-  return (
-    <div className="demo-banner live-banner" role="region" aria-label="Data notice">
-      <LiveTag v={v} />
-      <p className="demo-text">
-        <span className="demo-long">Live market data from {v.name}. Other terminal screens still use simulated data.</span>
-        <span className="demo-short">Live {v.name} data</span>
-      </p>
-      <div className="demo-controls">
-        <a className="demo-btn" href="#app-dashboard"><Icon n="layout-dashboard" size={14} /><span className="demo-long">Back to demo</span><span className="demo-short">Demo</span></a>
-      </div>
-    </div>
-  );
-}
-
-// Top-bar status pill for live pages.
-export function LiveFeedPill({ v }) {
-  const { data } = usePolled(v.api.status, 30000);
-  const now = useRealNow();
-  const [open, setOpen] = useState(false);
-  const btn = useRef(null);
-  const s = data || {};
-  const f = fresh(v, s.lastSuccessAt, now);
-  const word = f.status === 'recent' ? 'live' : f.status === 'delayed' ? 'delayed' : 'starting';
-  return (
-    <div className="pop-wrap">
-      <button ref={btn} type="button" className={cx('feed-pill', f.status !== 'recent' ? 'is-warn' : 'is-ok')} aria-expanded={open} onClick={() => setOpen((o) => !o)}
-        aria-label={`Feed status: ${v.name}, ${word}.`}>
-        <span className="feed-dot" aria-hidden="true" />
-        <span className="feed-text">{v.name} {word}</span>
-        {isNum(s.lastSuccessAt) && <span className="feed-time mono">{fmtTimeSec(s.lastSuccessAt).replace(' ET', '')}</span>}
-      </button>
-      <Popover open={open} onClose={() => setOpen(false)} anchorRef={btn} align="end" label={`${v.name} feed`} className="popover-pad feed-pop" width={320}>
-        <p className="strong">{v.name} feed</p>
-        <KeyValue items={[
-          ['Last full update', isNum(s.lastSuccessAt) ? `${fmtTimeSec(s.lastSuccessAt)} (${fmtAgeLong(f.age)})` : 'Not yet'],
-          ['Markets tracked', isNum(s.markets) ? `${fmtInt(s.markets)} in ${fmtInt(s.events)} events` : '—'],
-          ['Full update takes', isNum(s.lastPassSeconds) ? `${Math.round(s.lastPassSeconds)} seconds` : '—'],
-          ['Refresh', `About every ${minutes(Math.max(v.cfg.refreshSeconds, s.lastPassSeconds || 0))}; open market pages every 15 seconds`],
-          ['Delayed after', minutes(v.cfg.recentSeconds)],
-        ]} />
-        {s.lastError && <p className="small muted">Last problem {fmtTimeSec(s.lastError.at)}: {s.lastError.message}</p>}
-      </Popover>
-    </div>
-  );
-}
-
-function StatusBanners({ v, status, now }) {
-  if (!status) return null;
-  if (!isNum(status.lastPassAt)) {
-    return status.consecutiveFailures
-      ? <Banner tone="warning" icon="clock" title={`Can’t reach ${v.name} yet.`}>Banthom is retrying in the background. {status.lastError ? `Last error: ${status.lastError.message}` : ''}</Banner>
-      : <Banner tone="info" icon="refresh-cw" title={`Collecting the first snapshot from ${v.name}.`}>This takes a few minutes after the server starts. The page updates by itself.</Banner>;
-  }
-  const f = fresh(v, status.lastSuccessAt, now);
-  if (status.consecutiveFailures || f.status === 'delayed') {
-    return (
-      <Banner tone="warning" icon="clock" title={`${v.name} data is delayed.`}>
-        Last full update {isNum(status.lastSuccessAt) ? `${fmtTimeSec(status.lastSuccessAt)} (${fmtAgeLong(f.age)})` : 'not completed'}. Banthom keeps retrying; quotes may no longer be actionable.
-      </Banner>
-    );
-  }
-  return null;
-}
-
-// ---------------------------------------------------------------- Market list
-const colsFor = (v) => [
-  ['bid', 'Yes bid'], ['ask', 'Yes ask'], ['mid', 'Midpoint'], ['ch24', '24h'], ['vol24', 'Volume 24h'],
-  ...(v.id === 'kalshi' ? [['oi', 'Open interest']] : []), ['closes', 'Closes'],
-];
-
-export function LiveMarkets({ v }) {
-  useTitle(`${v.name} markets`);
-  const now = useRealNow();
-  const mobile = useMedia('(max-width: 767px)');
-  const [qInput, setQInput] = useState('');
-  const [q, setQ] = useState('');
-  const [cat, setCat] = useState('all');
-  const [sort, setSort] = useState({ key: 'vol24', dir: 'desc' });
-  const [limit, setLimit] = useState(50);
-  useEffect(() => { const t = setTimeout(() => setQ(qInput.trim()), 250); return () => clearTimeout(t); }, [qInput]);
-  useEffect(() => { setLimit(50); }, [q, cat, sort]);
-  const url = v.api.list({ q, category: cat, sort: sort.key, dir: sort.dir, limit });
-  const { data, error, loading, retry } = usePolled(url, 60000, { keep: true });
-  const link = (id) => `app-${v.route}-${id}`;
-
-  const rows = useMemo(() => (data ? data.markets.map((m) => {
-    const ev = data.events[m.event] || {};
-    const title = ev.title || m.event;
-    return {
-      id: m.ticker, m, title, label: m.label, category: ev.category || 'Other', multi: (ev.markets || 1) > 1,
-      bid: m.bid, ask: m.ask, mid: midOf2(m.bid, m.ask), ch24: change24(m), vol24: m.vol24, oi: m.oi, closes: m.closes,
-    };
-  }) : []), [data]);
-  const status = data && data.status;
-  const cats = (data && data.categories) || [];
-  const cols = colsFor(v);
-  const shownCols = mobile ? cols.filter(([k]) => k === 'mid' || k === 'ch24') : cols;
-  const filtering = q !== '' || cat !== 'all';
-  const stale = loading && !!data;
-
-  return (
-    <div className="page-stack">
-      <PageHeader title={`${v.name} markets`}
-        sub={`Live prices for every open ${v.name} market${data ? ` (${fmtInt(data.total)})` : ''}. Sorted by 24-hour volume.`}
-        meta={<><LiveTag v={v} /><VenueLiveBadge v={v} full />{status && <Fresh v={v} observedAt={status.lastSuccessAt} />}</>}
-        actions={<Button variant="secondary" icon="external-link" href={v.site} target="_blank" rel="noopener noreferrer">{v.siteLabel}</Button>} />
-      {error && !data && (
-        <Banner tone="danger" title={`Couldn’t load ${v.name} data.`} actions={<Button size="sm" variant="secondary" icon="refresh-cw" onClick={retry}>Retry</Button>}>{error.message}</Banner>
-      )}
-      <StatusBanners v={v} status={status} now={now} />
-      <Panel flush className="live-table-panel">
-        <div className="live-toolbar">
-          <div className="input-wrap live-search">
-            <Icon n="search" size={16} />
-            <input className="input" type="search" value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder={`Search ${v.name} markets`} aria-label={`Search ${v.name} markets`} />
-          </div>
-          <label className="sr-only" htmlFor="live-cat">Category</label>
-          <select id="live-cat" className="select live-cat" value={cat} onChange={(e) => setCat(e.target.value)}>
-            <option value="all">All categories{data ? ` (${fmtInt(data.total)})` : ''}</option>
-            {cats.map(([c, n]) => <option key={c} value={c}>{c} ({fmtInt(n)})</option>)}
-          </select>
-          <span className="muted small live-count" aria-live="polite">
-            {data ? `${fmtInt(data.matched)} ${data.matched === 1 ? 'market' : 'markets'}${stale ? ' · updating…' : ''}` : ''}
-          </span>
-        </div>
-        {!data && loading ? (
-          <div className="live-skeleton">{[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} h={36} />)}</div>
-        ) : !data ? null : !rows.length && !filtering ? (
-          <EmptyState title={status && isNum(status.lastPassAt) ? 'No open markets' : `No ${v.name} data yet`}>
-            {status && isNum(status.lastPassAt) ? `${v.name} has no open markets right now.` : `Markets appear here after the first update from ${v.name}.`}
-          </EmptyState>
-        ) : !rows.length ? (
-          <EmptyState title="No markets match" action={<Button variant="secondary" size="sm" onClick={() => { setQInput(''); setQ(''); setCat('all'); }}>Clear search</Button>}>Try a shorter search or another category.</EmptyState>
-        ) : (
-          <div className={cx('table-scroll', stale && 'is-stale')}>
-            <table className="table live-table">
-              <caption className="sr-only">Open {v.name} markets. Prices in {v.unitNote}.</caption>
-              <thead>
-                <tr>
-                  <SortHeader col="title" sort={sort} setSort={setSort}>Market</SortHeader>
-                  {shownCols.map(([k, label]) => <SortHeader key={k} col={k} sort={sort} setSort={setSort} num>{label}</SortHeader>)}
-                  {!mobile && <th scope="col" className="num">Data</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id} tabIndex={0} aria-label={`${r.title}, ${r.label}`} onClick={() => go(link(r.id))}
-                    onKeyDown={(e) => { if (e.target === e.currentTarget) rowKeyNav(e, () => go(link(r.id))); }}>
-                    <td className="live-mkt">
-                      <div className="mkt-cell">
-                        <a href={`#${link(r.id)}`} onClick={(e) => e.stopPropagation()}>{r.multi ? r.label : r.title}</a>
-                        <span className="mkt-cell-sub">{r.multi ? r.title : r.category}</span>
-                      </div>
-                    </td>
-                    {shownCols.map(([k]) => (
-                      <td key={k} className="num">
-                        {k === 'ch24' ? <Delta value={r.ch24} />
-                          : k === 'vol24' || k === 'oi' ? fmtVolume(r[k], v.volBasis)
-                            : k === 'closes' ? fmtDateShort(r.closes)
-                              : fmtCentsAuto(r[k])}
-                      </td>
-                    ))}
-                    {!mobile && <td className="num"><Fresh v={v} observedAt={r.m.observedAt} variant="cell" /></td>}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {data && data.matched > rows.length && (
-          <div className="live-more">
-            {limit < 500
-              ? <Button variant="secondary" size="sm" loading={stale} onClick={() => setLimit((n) => Math.min(500, n + 50))}>Show 50 more</Button>
-              : <span className="muted small">Showing the first 500. Narrow the search or pick a category to see others.</span>}
-          </div>
-        )}
-      </Panel>
-      <p className="muted small live-note">
-        Prices are in {v.unitNote}. Midpoint uses the Yes bid and ask; a missing bid or ask is shown as —, never filled in.
-        {' '}{v.listNote} The list refreshes about every {minutes(Math.max(v.cfg.refreshSeconds, (status && status.lastPassSeconds) || 0))}. Source: {v.name} public market data. Banthom doesn’t place orders.
-      </p>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------- Market detail
 function QuoteStrip({ v, m, compact }) {
   const spread = isNum(m.bid) && isNum(m.ask) ? m.ask - m.bid : null;
@@ -251,32 +66,6 @@ function QuoteStrip({ v, m, compact }) {
 }
 
 const RANGES = [{ id: '1D', label: '1D', aria: '1 day' }, { id: '1W', label: '1W', aria: '1 week' }, { id: '1M', label: '1M', aria: '1 month' }, { id: 'ALL', label: 'All', aria: 'Since listing' }];
-
-function buildSeries(h, side) {
-  if (!h) return { points: [], gaps: [] };
-  const step = h.interval * 60e3;
-  const points = [];
-  const gaps = [];
-  let prev = null;
-  for (const p of h.points) {
-    const mid = isNum(p.mid) ? p.mid : midOf2(p.bid, p.ask);
-    const val = isNum(mid) ? (side === 'yes' ? mid : 100 - mid) : null;
-    if (prev && p.t - prev.t > step * 1.5) {
-      points.push({ t: prev.t + step, v: null });
-      gaps.push([prev.t, p.t]);
-    }
-    points.push({ t: p.t, v: val });
-    prev = p;
-  }
-  // Intervals without a price are gaps too.
-  let start = null;
-  points.forEach((p, i) => {
-    if (!isNum(p.v) && start == null) start = i > 0 ? points[i - 1].t : p.t;
-    if (isNum(p.v) && start != null) { gaps.push([start, p.t]); start = null; }
-  });
-  if (start != null && points.length) gaps.push([start, points[points.length - 1].t]);
-  return { points, gaps };
-}
 
 function summarize(points, label) {
   const vals = points.filter((p) => isNum(p.v));
@@ -379,7 +168,7 @@ function Siblings({ v, list, exclusive }) {
       <ul className="related">
         {list.slice(0, 12).map((s) => (
           <li key={s.ticker}>
-            <a href={`#app-${v.route}-${s.ticker}`} className="related-link">
+            <a href={marketHref(`${v.id}:${s.ticker}`)} className="related-link">
               <span className="grow related-name">{s.label}</span>
               <span className="mono">{fmtCentsAuto(midOf2(s.bid, s.ask))}</span>
               <Delta value={change24(s)} />
@@ -387,7 +176,7 @@ function Siblings({ v, list, exclusive }) {
           </li>
         ))}
       </ul>
-      {list.length > 12 && <p className="muted small">{pluralize(list.length - 12, 'more market')} in this event. <a href={`#app-${v.route}`}>Search the market list</a>.</p>}
+      {list.length > 12 && <p className="muted small">{pluralize(list.length - 12, 'more market')} in this event.</p>}
     </>
   );
 }
@@ -405,49 +194,81 @@ function Sources({ v, m }) {
   );
 }
 
-export function LiveMarket({ v, ticker }) {
-  const { data, error, loading, retry } = usePolled(v.api.market(ticker), 15000);
+function PairPanel({ pair, here }) {
+  const o = pair.other;
+  const gap = here != null && o.mid != null ? Math.round((here - o.mid) * 10) / 10 : null;
+  return (
+    <Panel title={`Also on ${venueName(o.venue)}`} sub="Suggested match · unverified">
+      <a href={marketHref(o.id)} className="related-link">
+        <VenueLiveBadge v={LIVE_VENUES[o.venue]} />
+        <span className="grow related-name">{o.multi ? `${o.eventTitle}: ${o.label}` : o.eventTitle}{o.yes ? ` (Yes = ${o.yes})` : ''}</span>
+        <span className="mono">{fmtCentsAuto(o.mid)}</span>
+      </a>
+      <p className="muted small">Price gap here vs {venueName(o.venue)}: <span className="mono">{fmtPP(gap)}</span>. Before treating these as the same question, compare both venues’ rules.</p>
+      <Button size="sm" variant="secondary" icon="git-compare-arrows" href={compareHref(pair.id)}>Compare side by side</Button>
+    </Panel>
+  );
+}
+
+export function MarketPage({ venue, ticker }) {
+  const v = LIVE_VENUES[venue];
+  const { data, error, loading, retry } = usePolled(API2.market(venue, ticker), 15000);
   const now = useRealNow();
   const mobile = useMedia('(max-width: 767px)');
+  const [alertOpen, setAlertOpen] = useState(false);
   const m = data && data.market;
   const ev = data && data.event;
   const title = ev ? ev.title : ticker;
-  const listHref = `#app-${v.route}`;
   useTitle(m ? `${m.label} · ${title}` : `${v.name} market`);
+  const multi = !!(data && data.siblings.length > 0);
+  const evLink = ev ? eventHref(venue, ev.ticker) : null;
+  const crumbs = m ? [
+    { label: 'Markets', href: '#app-markets' },
+    ...(data.category ? [{ label: data.category, href: `#app-markets-${slugOf(data.category)}` }] : []),
+    ...(multi && evLink ? [{ label: title, href: evLink }, { label: m.label }] : [{ label: title }]),
+  ] : null;
+  usePageCrumbs(crumbs);
 
   if (!data) {
     const notFound = error && error.status === 404;
     return (
       <div className="page-stack">
         <PageHeader title={loading ? 'Loading market…' : notFound ? 'Market not found' : 'Couldn’t load this market'}
-          crumbs={[{ label: `${v.name} markets`, href: listHref }, { label: ticker }]} meta={<VenueLiveBadge v={v} full />} />
+          crumbs={[{ label: 'Markets', href: '#app-markets' }, { label: ticker }]} meta={<VenueLiveBadge v={v} full />} />
         {loading ? <Skeleton h={88} /> : (
-          <EmptyState title={notFound ? `${v.name} has no market ${ticker}.` : `${v.name} didn’t respond.`}
-            action={notFound ? <Button variant="secondary" href={listHref}>Browse {v.name} markets</Button> : <Button variant="secondary" icon="refresh-cw" onClick={retry}>Try again</Button>}>
-            {notFound ? 'It may have been settled and archived, or the link may be wrong.' : error && error.message}
+          <EmptyState title={notFound ? `${v.name} has no open market ${ticker}.` : `${v.name} didn’t respond.`}
+            action={notFound ? <Button variant="secondary" href="#app-markets">Browse markets</Button> : <Button variant="secondary" icon="refresh-cw" onClick={retry}>Try again</Button>}>
+            {notFound ? 'It may have closed, settled or been archived, or the link may be wrong.' : error && error.message}
           </EmptyState>
         )}
       </div>
     );
   }
 
+  const row = { id: data.id, venue, label: m.label, eventTitle: title, multi };
   const fr = fresh(v, m.observedAt, now);
   const active = m.status === 'active' || m.status === 'open';
-  const multi = data.siblings.length > 0;
   const yesMeans = m.yesLabel && m.yesLabel !== 'Yes' ? m.yesLabel : m.label;
   const header = (
-    <PageHeader title={multi ? m.label : title} crumbs={[{ label: `${v.name} markets`, href: listHref }, ...(multi ? [{ label: title }] : []), { label: multi ? m.label : m.ticker }]}
-      sub={multi ? title : ev && ev.sub ? ev.sub : null}
+    <PageHeader title={multi ? m.label : title}
+      crumbs={crumbs}
+      sub={multi ? <a className="link-quiet" href={evLink}>{title}</a> : ev && ev.sub ? ev.sub : null}
       meta={<>
         <VenueLiveBadge v={v} full />
         <LiveTag v={v} />
         {active ? <Badge tone="muted" icon="circle-dot">Open</Badge> : <Badge tone="neutral" icon="circle-check">{m.status ? m.status[0].toUpperCase() + m.status.slice(1) : 'Not trading'}</Badge>}
-        {ev && <Badge tone="muted">{ev.category}</Badge>}
+        {data.category && <Badge tone="muted">{data.category}</Badge>}
       </>}
-      actions={<Button variant="secondary" icon="external-link" href={v.marketUrl(ev)} target="_blank" rel="noopener noreferrer">Open on {v.name}</Button>}>
+      actions={<>
+        <StarButton row={row} size="lg" />
+        <WatchMenu row={row} />
+        <Button variant="secondary" icon="bell-plus" onClick={() => setAlertOpen(true)}>Create alert</Button>
+        <Button variant="secondary" icon="external-link" href={v.marketUrl(ev)} target="_blank" rel="noopener noreferrer">Open on {v.name}</Button>
+      </>}>
       <p className="page-subline">
         <span>Closes {fmtDate(m.closes)}</span><span aria-hidden="true">•</span>
         <span>Yes means “{yesMeans}”</span><span aria-hidden="true">•</span>
+        {multi && evLink && <><a href={evLink}>{pluralize(data.siblings.length + 1, 'outcome')} in this event</a><span aria-hidden="true">•</span></>}
         <span>Fetched from {v.name} {fmtTimeSec(m.observedAt)}</span>
       </p>
     </PageHeader>
@@ -459,7 +280,9 @@ export function LiveMarket({ v, ticker }) {
       {error && <Banner tone="warning" icon="clock" title="Refresh failed.">Showing the last data Banthom received. {error.message}</Banner>}
     </>
   );
-  const sib = <Panel title="Other outcomes in this event" sub={ev ? ev.title : null}><Siblings v={v} list={data.siblings} exclusive={ev && ev.exclusive} /></Panel>;
+  const sib = <Panel title="Other outcomes in this event" sub={ev ? ev.title : null} actions={evLink ? <Button size="sm" variant="ghost" href={evLink} iconRight="arrow-right">Event</Button> : null}><Siblings v={v} list={data.siblings} exclusive={ev && ev.exclusive} /></Panel>;
+  const pair = data.pair ? <PairPanel pair={data.pair} here={midOf2(m.bid, m.ask)} /> : null;
+  const editor = <AlertEditor open={alertOpen} onClose={() => setAlertOpen(false)} initial={{ marketId: data.id, venue, label: m.label, eventTitle: title, multi }} />;
 
   if (mobile) {
     return (
@@ -468,10 +291,12 @@ export function LiveMarket({ v, ticker }) {
         {banners}
         <QuoteStrip v={v} m={m} compact />
         <LiveChart v={v} ticker={ticker} label={m.label} />
+        {pair}
         <LiveBook v={v} ticker={ticker} compact />
         <Rules v={v} m={m} ev={ev} series={data.series} />
         {multi && sib}
         <Panel title="Sources"><Sources v={v} m={m} /></Panel>
+        {editor}
       </div>
     );
   }
@@ -486,35 +311,26 @@ export function LiveMarket({ v, ticker }) {
           <Rules v={v} m={m} ev={ev} series={data.series} />
         </div>
         <div className="s-4 col-stack">
+          {pair}
           <LiveBook v={v} ticker={ticker} compact />
           {multi && sib}
           <Panel title="Sources"><Sources v={v} m={m} /></Panel>
         </div>
       </div>
+      {editor}
     </div>
   );
 }
 
-// Shown when a live link is opened in a copy without the Banthom server (for example the static prototype).
+// Shown when the page runs without the Banthom server (for example a static copy), or a venue is switched off.
 export function LiveOff({ name = 'Live' }) {
   useTitle(`${name} markets`);
   return (
     <div className="page-stack">
       <PageHeader title={`${name} markets`} crumbs={[{ label: `${name} markets` }]} />
       <EmptyState title={`Live ${name} data isn’t available here.`} action={<Button variant="secondary" href="#app-dashboard">Back to overview</Button>}>
-        Live data comes from the Banthom server. This copy of the prototype runs without it, or this venue is switched off, so only simulated data is shown.
+        Live data comes from the Banthom server. This copy runs without it, or this venue is switched off.
       </EmptyState>
     </div>
-  );
-}
-
-// Overview callout linking to the live pages.
-export function LiveCallout() {
-  const names = LIVE_LIST.map((v) => v.name).join(' and ');
-  return (
-    <Banner tone="info" icon="radio" title={`Live ${names} markets are on.`}
-      actions={<>{LIVE_LIST.map((v) => <Button key={v.id} size="sm" variant="secondary" href={`#app-${v.route}`}>Open {v.name}</Button>)}</>}>
-      Real prices, order books and rules. This overview still uses simulated data.
-    </Banner>
   );
 }

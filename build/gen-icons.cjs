@@ -21,7 +21,8 @@ circle-dot gauge quote message-square send building-2 users briefcase flag timer
 scan-search badge-check ban circle-dashed undo-2 save rotate-ccw grip-vertical sun moon monitor play pause
 crosshair target radar circle-x equal-not rss inbox list-checks file-search microscope lightbulb network
 workflow book-marked notebook-pen sticky-note layout-template panel-right gavel scroll-text unplug plug
-circle-minus minus circle-plus arrow-right-left sigma calculator chart-bar signal waves split move-up move-down`
+circle-minus minus circle-plus arrow-right-left sigma calculator chart-bar signal waves split move-up move-down
+bitcoin cpu cloud-sun trophy clapperboard heart-pulse banknote megaphone plane star-off list-plus bell-off`
   .split(/\s+/).filter(Boolean);
 
 const pascal = (s) => s.split('-').map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join('');

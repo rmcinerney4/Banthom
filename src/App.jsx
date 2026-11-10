@@ -12,7 +12,7 @@ const { useEffect, useLayoutEffect, useRef } = React;
 
 const AUTH = { 'sign-up': 'sign-up', 'sign-in': 'sign-in', 'forgot-password': 'forgot' };
 const TITLES = {
-  home: 'Banthom Prototype', pricing: 'Pricing · Banthom', methodology: 'Methodology · Banthom', 'sign-up': 'Create account · Banthom',
+  home: 'Banthom · Prediction market research', pricing: 'Pricing · Banthom', methodology: 'Methodology · Banthom', 'sign-up': 'Create account · Banthom',
   'sign-in': 'Log in · Banthom', 'forgot-password': 'Reset password · Banthom', onboarding: 'Set up · Banthom',
 };
 
@@ -43,7 +43,7 @@ function useRouteEffects(route) {
     if (route.kind !== 'app') window.scrollTo(0, 0);
   }, [route.key]);
   useEffect(() => {
-    if (route.kind !== 'app') document.title = TITLES[route.key] || 'Banthom Prototype';
+    if (route.kind !== 'app') document.title = TITLES[route.key] || 'Banthom';
     if (first.current) { first.current = false; return; }
     const t = setTimeout(() => {
       const el = document.querySelector('[data-route-focus]');

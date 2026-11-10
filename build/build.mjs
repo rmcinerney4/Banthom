@@ -43,7 +43,7 @@ const styleDir = path.join(ROOT, 'src/styles');
 const css = fs.readdirSync(styleDir).filter((f) => f.endsWith('.css')).sort()
   .map((f) => fs.readFileSync(path.join(styleDir, f), 'utf8')).join('\n');
 
-const html = `<title>Banthom Prototype</title>
+const html = `<title>Banthom</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -51,7 +51,7 @@ const html = `<title>Banthom Prototype</title>
 <style>
 ${css}
 </style>
-<div id="root"><div class="boot" role="status">Loading the Banthom prototype…</div></div>
+<div id="root"><div class="boot" role="status">Loading Banthom…</div></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script>

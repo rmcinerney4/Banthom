@@ -1,146 +1,66 @@
+// Alerts: rules on live Kalshi and Polymarket quotes. Saved and checked in this browser while Banthom is open.
 import React from 'react';
-import { Icon, Button, IconButton, Badge, Panel, PageHeader, EmptyState, VenueBadge, Sheet, Field, Check, Switch, Tabs, TabPanel, Banner, MenuButton } from '../ui/core.jsx';
-import { useStore } from '../store.jsx';
-import { useMedia, useNow } from '../lib/hooks.js';
-import { useFeed, change24 } from '../data/quotes.js';
-import { MARKETS, MARKET_BY_ID, EVENT_BY_ID, VENUES, METRICS, OPS, matchForMarket } from '../data/fixtures.js';
-import { fmtCents, fmtTime, fmtTimeSec, fmtDateShort, fmtPP, cx, isNum } from '../lib/format.js';
-import { useTitle } from './kit.jsx';
+import { Icon, Button, Badge, Panel, PageHeader, EmptyState, VenueBadge, Delta, Sheet, Field, Switch, Tabs, TabPanel, Banner, MenuButton } from '../ui/core.jsx';
+import { useStore, METRICS, COOLDOWNS, ruleText, ruleHit, fmtMetric, itemName } from '../store.jsx';
+import { useMedia } from '../lib/hooks.js';
+import { fmtCentsAuto, fmtTime, fmtTimeSec, fmtDateShort, cx, isNum, pluralize } from '../lib/format.js';
+import { usePolled, API2, marketHref } from '../data/live.js';
+import { useTitle, MarketSearch, Fresh } from './kit.jsx';
 
-const { useState, useEffect, useMemo, useRef } = React;
+const { useState, useEffect, useMemo } = React;
+const lcFirst = (s) => (/^Yes\b/.test(s) ? s : s.charAt(0).toLowerCase() + s.slice(1));
 
-// Lets other screens open the editor prefilled ("Create alert" from a row menu).
-export const pendingAlert = { current: null };
+const OPS = {
+  price: [['gte', 'rises to or above'], ['lte', 'falls to or below']],
+  change: [['absgte', 'moves by at least (either way)'], ['gte', 'rises by at least'], ['lte', 'falls by at least']],
+};
+const opsFor = (metric) => (metric === 'change' ? OPS.change : OPS.price);
+const cooldownLabel = (m) => (COOLDOWNS.find((c) => c[0] === m) || [m, `${m} minutes`])[1];
+const valueOf = (metric, q) => (!q ? null : metric === 'change' ? q.ch24 : q[metric]);
+const when = (t) => `${fmtDateShort(t)}, ${fmtTime(t)}`;
 
-const COOLDOWNS = [[5, '5 minutes'], [15, '15 minutes'], [30, '30 minutes'], [60, '1 hour'], [240, '4 hours'], [1440, '1 day']];
-const cooldownLabel = (m) => (COOLDOWNS.find((c) => c[0] === m) || [m, `${m} min`])[1];
-
-function unitText(metric, v) {
-  if (!isNum(v)) return '—';
-  if (metric === 'change') return `${v} pp`;
-  if (metric === 'volume') return `${v.toLocaleString('en-US')} ct`;
-  if (metric === 'closing') return `${v} h`;
-  if (metric === 'netspread') return `${v > 0 ? '+' : ''}${v}¢`;
-  return `${v}¢`;
-}
-export function ruleSentence(r) {
-  const mk = MARKET_BY_ID[r.marketId];
-  if (!mk) return '';
-  const label = METRICS[r.metric].label;
-  const metric = label.startsWith('Yes') ? label : label.charAt(0).toLowerCase() + label.slice(1);
-  const where = `${VENUES[mk.venue].short}’s “${mk.outcome}” contract`;
-  const v = unitText(r.metric, r.threshold);
-  let cond;
-  if (r.metric === 'closing') cond = `${where} is within ${v} of closing`;
-  else if (r.metric === 'netspread') cond = `the net spread on the verified “${mk.outcome}” pair reaches ${v} or more`;
-  else if (r.metric === 'change') cond = r.op === 'absgte' ? `the 24h change on ${where} reaches ${v} in either direction` : `the 24h change on ${where} ${r.op === 'gte' ? 'rises' : 'falls'} by at least ${v}`;
-  else cond = `the ${metric} on ${where} ${r.op === 'gte' ? 'rises to' : 'falls to'} ${v} or ${r.op === 'gte' ? 'higher' : 'lower'}`;
-  return `Notify me in the app when ${cond}, at most once every ${cooldownLabel(r.cooldown)}${r.onlyFresh ? ', only while quote data is current' : ''}.`;
+// Short form for tables: "Yes midpoint ≥ 60¢", "24h change ±5 pp or more".
+export function condText(r) {
+  const t = r.threshold;
+  if (r.metric === 'change') return r.op === 'absgte' ? `24h change ±${t} pp or more` : r.op === 'gte' ? `24h change +${t} pp or more` : `24h change −${t} pp or more`;
+  return `${(METRICS[r.metric] || METRICS.mid).label} ${r.op === 'gte' ? '≥' : '≤'} ${t}¢`;
 }
 
-function currentValue(metric, mk, q) {
-  if (!q) return null;
-  if (metric === 'bid') return q.bid;
-  if (metric === 'ask') return q.ask;
-  if (metric === 'last') return q.last;
-  if (metric === 'change') return change24(mk, q);
-  if (metric === 'volume') return mk.vol;
-  return null;
-}
-
-function MarketPicker({ value, onChange, error }) {
-  const [q, setQ] = useState('');
-  const [open, setOpen] = useState(false);
-  const [sel, setSel] = useState(0);
-  const mk = value ? MARKET_BY_ID[value] : null;
-  const results = useMemo(() => {
-    const t = q.toLowerCase().split(/\s+/).filter(Boolean);
-    return MARKETS.filter((m) => m.status !== 'resolved' && t.every((w) => `${m.title} ${m.outcome} ${m.venue} ${EVENT_BY_ID[m.eventId].title}`.toLowerCase().includes(w))).slice(0, 6);
-  }, [q]);
-  const pick = (m) => { onChange(m.id); setQ(''); setOpen(false); };
-  const onKey = (e) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setSel((s) => Math.min(results.length - 1, s + 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setSel((s) => Math.max(0, s - 1)); }
-    else if (e.key === 'Enter' && open && results[sel]) { e.preventDefault(); pick(results[sel]); }
-    else if (e.key === 'Escape' && open) { e.stopPropagation(); setOpen(false); }
-  };
-  return (
-    <Field id="al-market" label="Market" error={error}>
-      {mk && (
-        <div className="picked">
-          <VenueBadge venue={mk.venue} />
-          <span className="grow picked-title">{mk.title}</span>
-          <button type="button" className="btn btn-link small" onClick={() => onChange(null)}>Change</button>
-        </div>
-      )}
-      {!mk && (
-        <div className="combo">
-          <div className="input-wrap">
-            <Icon n="search" size={16} />
-            <input id="al-market" className="input" value={q} placeholder="Search markets…" role="combobox" aria-expanded={open && results.length > 0}
-              aria-controls="al-market-list" aria-autocomplete="list" aria-activedescendant={open && results[sel] ? `al-opt-${sel}` : undefined}
-              aria-invalid={!!error} aria-describedby={error ? 'al-market-err' : undefined}
-              onChange={(e) => { setQ(e.target.value); setOpen(true); setSel(0); }} onFocus={() => setOpen(true)} onKeyDown={onKey}
-              onBlur={() => setTimeout(() => setOpen(false), 120)} />
-          </div>
-          {open && results.length > 0 && (
-            <ul id="al-market-list" role="listbox" className="combo-list" aria-label="Markets">
-              {results.map((m, i) => (
-                <li key={m.id} id={`al-opt-${i}`} role="option" aria-selected={sel === i} className={cx('combo-opt', sel === i && 'is-sel')}
-                  onMouseDown={(e) => { e.preventDefault(); pick(m); }} onMouseEnter={() => setSel(i)}>
-                  <VenueBadge venue={m.venue} /><span className="grow">{m.title}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {open && q && !results.length && <p className="muted small combo-none">No active markets match “{q}”.</p>}
-        </div>
-      )}
-    </Field>
-  );
-}
-
-const blank = (marketId) => ({ id: null, marketId: marketId || null, metric: 'ask', op: 'gte', threshold: '', cooldown: 30, channel: 'in-app', onlyFresh: true, enabled: true, lastTriggered: null });
+const blank = (m) => ({
+  id: null, marketId: m ? m.marketId : null, venue: m ? m.venue : null, label: m ? m.label : '', eventTitle: m ? m.eventTitle || '' : '', multi: !!(m && m.multi),
+  metric: 'mid', op: 'gte', threshold: '', cooldown: 60, enabled: true, lastFiredAt: null,
+});
 
 export function AlertEditor({ open, onClose, initial }) {
   const { saveAlert, alerts, toast } = useStore();
   const mobile = useMedia('(max-width: 767px)');
-  const feed = useFeed();
-  const [d, setD] = useState(blank());
+  const [d, setD] = useState(() => blank());
   const [errs, setErrs] = useState({});
   useEffect(() => {
-    if (open) {
-      const base = initial && initial.id ? { ...initial, threshold: String(initial.threshold) } : blank(initial && initial.marketId);
-      if (!initial || !initial.id) {
-        const q = base.marketId ? feed.quotes[base.marketId] : null;
-        if (initial && initial.metric === 'netspread') { base.metric = 'netspread'; base.op = 'gte'; base.threshold = '1'; }
-        else if (q && isNum(q.ask)) base.threshold = String(Math.min(99, q.ask + 2));
-      }
-      setD(base);
-      setErrs({});
-    }
+    if (!open) return;
+    setD(initial && initial.id ? { ...initial, threshold: String(initial.threshold) } : blank(initial && initial.marketId ? initial : null));
+    setErrs({});
   }, [open]);
-  const mk = d.marketId ? MARKET_BY_ID[d.marketId] : null;
-  const q = mk ? feed.quotes[mk.id] : null;
-  const match = mk ? matchForMarket(mk.id) : null;
-  const verified = match && match.status === 'verified';
-  const metrics = Object.entries(METRICS).filter(([k]) => k !== 'netspread' || verified);
-  const opsFor = (m) => (m === 'closing' ? [['lte', 'is within']] : m === 'change' ? [['absgte', 'moves by at least (either direction)'], ['gte', 'rises by at least'], ['lte', 'falls by at least']] : [['gte', 'is at or above'], ['lte', 'is at or below']]);
-  const setMetric = (m) => setD({ ...d, metric: m, op: opsFor(m)[0][0], threshold: '' });
+  const { data: qd } = usePolled(open && d.marketId ? API2.quotes([d.marketId]) : null, 30000);
+  const first = qd && qd.quotes ? qd.quotes[0] : null;
+  const q = first && !first.missing ? first : null;
+  const closed = !!(first && first.missing);
   const num = Number(d.threshold);
-  const cur = mk ? currentValue(d.metric, mk, q) : null;
-  const already = isNum(cur) && d.threshold !== '' && ((d.op === 'gte' && cur >= num) || (d.op === 'lte' && cur <= num));
+  const unit = METRICS[d.metric].unit;
+  const cur = valueOf(d.metric, q);
+  const already = !!q && d.threshold !== '' && Number.isFinite(num) && ruleHit({ ...d, threshold: num }, q);
 
+  const pick = (r) => setD((x) => ({ ...x, marketId: r.id, venue: r.venue, label: r.label, eventTitle: r.eventTitle || '', multi: !!r.multi }));
+  const setMetric = (m) => setD((x) => ({ ...x, metric: m, op: opsFor(m)[0][0], threshold: '' }));
   const validate = () => {
     const e = {};
-    if (!mk) e.market = 'Choose a market.';
-    if (d.threshold === '' || !Number.isFinite(num)) e.threshold = `Enter a threshold in ${METRICS[d.metric].unit === '¢' ? 'cents' : METRICS[d.metric].unit === 'pp' ? 'percentage points' : METRICS[d.metric].unit === 'h' ? 'hours' : 'contracts'}.`;
-    else if (['bid', 'ask', 'last'].includes(d.metric) && (num < 1 || num > 99)) e.threshold = 'Prices run from 1¢ to 99¢.';
-    else if (d.metric === 'change' && (num <= 0 || num > 50)) e.threshold = 'Use a change between 0.1 and 50 pp.';
-    else if (d.metric === 'closing' && (num < 1 || num > 720)) e.threshold = 'Use between 1 and 720 hours.';
-    else if (d.metric === 'volume' && num <= 0) e.threshold = 'Volume must be above 0.';
-    else if (d.metric === 'netspread' && (num < -10 || num > 20)) e.threshold = 'Use a net spread between −10¢ and +20¢.';
-    if (!e.market && !e.threshold && alerts.some((a) => a.id !== d.id && a.marketId === d.marketId && a.metric === d.metric && a.op === d.op && Number(a.threshold) === num)) e.form = 'You already have a rule with this market, metric and threshold.';
+    if (!d.marketId) e.market = 'Choose a market.';
+    if (d.threshold === '' || !Number.isFinite(num)) e.threshold = d.metric === 'change' ? 'Enter a change in percentage points.' : 'Enter a price in cents.';
+    else if (d.metric !== 'change' && (num <= 0 || num >= 100)) e.threshold = 'Prices are between 0¢ and 100¢.';
+    else if (d.metric === 'change' && (num <= 0 || num > 100)) e.threshold = 'Use a change above 0 and up to 100 pp.';
+    if (!e.market && !e.threshold && alerts.some((a) => a.id !== d.id && a.marketId === d.marketId && a.metric === d.metric && a.op === d.op && Number(a.threshold) === num)) {
+      e.form = 'You already have this rule.';
+    }
     return e;
   };
   const save = (ev) => {
@@ -148,141 +68,184 @@ export function AlertEditor({ open, onClose, initial }) {
     const e = validate();
     setErrs(e);
     if (Object.keys(e).length) {
-      const first = e.market ? 'al-market' : e.threshold ? 'al-threshold' : null;
-      if (first) { const el = document.getElementById(first); if (el) el.focus(); }
+      const el = document.getElementById(e.market ? 'al-market' : e.threshold ? 'al-threshold' : '');
+      if (el) el.focus();
       return;
     }
-    const rule = { ...d, id: d.id || `al-${Math.random().toString(36).slice(2, 7)}`, threshold: num, matchId: d.metric === 'netspread' ? match.id : undefined };
-    saveAlert(rule);
-    toast(d.id ? 'Alert updated.' : 'Alert saved. It fires only while quote data is current.' );
+    saveAlert({ ...d, id: d.id || `al-${Math.random().toString(36).slice(2, 9)}`, threshold: num, createdAt: d.createdAt || Date.now() });
+    toast(d.id ? 'Alert updated.' : 'Alert saved. Banthom checks it every 30 seconds while this site is open in this browser.');
     onClose();
   };
-  const unit = METRICS[d.metric].unit;
+
   return (
-    <Sheet open={open} onClose={onClose} title={d.id ? 'Edit alert' : 'Create alert'} sub="In-app alerts. Email needs a verified address." width={480} side={mobile ? 'bottom' : 'right'}
-      className={mobile ? 'sheet-tall' : undefined}
+    <Sheet open={open} onClose={onClose} title={d.id ? 'Edit alert' : 'Create alert'} sub="Checked against live quotes while Banthom is open in this browser."
+      width={480} side={mobile ? 'bottom' : 'right'} className={mobile ? 'sheet-tall' : undefined}
       footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" type="submit" form="alert-form">{d.id ? 'Save changes' : 'Save alert'}</Button></>}>
       <form id="alert-form" className="stack" onSubmit={save} noValidate>
-        <MarketPicker value={d.marketId} onChange={(id) => setD({ ...d, marketId: id, metric: d.metric === 'netspread' ? 'ask' : d.metric })} error={errs.market} />
-        {mk && q && <p className="muted small picked-now">Now: bid {fmtCents(q.bid)} · ask {fmtCents(q.ask)} · last {fmtCents(q.last)} · observed {fmtTimeSec(q.observedAt)}</p>}
+        <Field id="al-market" label="Market" error={errs.market}>
+          {d.marketId ? (
+            <div className="picked">
+              <VenueBadge venue={d.venue} />
+              <span className="grow picked-title">{itemName(d)}</span>
+              {!d.id && <button type="button" className="btn btn-link small" onClick={() => setD((x) => ({ ...x, marketId: null }))}>Change</button>}
+            </div>
+          ) : (
+            <MarketSearch id="al-market" onPick={pick} placeholder="Search Kalshi and Polymarket" invalid={!!errs.market} describedBy={errs.market ? 'al-market-err' : undefined} />
+          )}
+        </Field>
+        {q && (
+          <p className="muted small picked-now">
+            Now: bid {fmtCentsAuto(q.bid)} · ask {fmtCentsAuto(q.ask)} · mid {fmtCentsAuto(q.mid)} · 24h <Delta value={q.ch24} /> · <Fresh venue={q.venue} at={q.observedAt} />
+          </p>
+        )}
+        {closed && <Banner tone="warning" icon="circle-alert" title="This market is no longer trading.">It closed or settled, so this rule can’t fire.</Banner>}
         <div className="form-2">
-          <Field id="al-metric" label="Metric">
+          <Field id="al-metric" label="Watch">
             <select id="al-metric" className="select" value={d.metric} onChange={(e) => setMetric(e.target.value)}>
-              {metrics.map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+              {Object.entries(METRICS).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
             </select>
           </Field>
           <Field id="al-op" label="Condition">
-            <select id="al-op" className="select" value={d.op} onChange={(e) => setD({ ...d, op: e.target.value })}>
+            <select id="al-op" className="select" value={d.op} onChange={(e) => setD((x) => ({ ...x, op: e.target.value }))}>
               {opsFor(d.metric).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
             </select>
           </Field>
         </div>
-        <Field id="al-threshold" label={`Threshold (${unit === '¢' ? 'cents' : unit === 'pp' ? 'percentage points' : unit === 'h' ? 'hours' : 'contracts'})`} error={errs.threshold}
-          hint={d.metric === 'netspread' ? 'Net of the fee schedule, at top-of-book size. Only verified pairs.' : undefined}>
+        <Field id="al-threshold" label={`Threshold (${unit === 'pp' ? 'percentage points' : 'cents'})`} error={errs.threshold}
+          hint={isNum(cur) ? `Currently ${fmtMetric(d.metric, cur)}.` : undefined}>
           <div className="input-wrap">
-            <input id="al-threshold" className="input has-unit" type="number" inputMode="decimal" step={unit === 'pp' ? '0.1' : unit === '¢' ? '0.5' : '1'}
-              value={d.threshold} onChange={(e) => setD({ ...d, threshold: e.target.value })} aria-invalid={!!errs.threshold}
-              aria-describedby={errs.threshold ? 'al-threshold-err' : d.metric === 'netspread' ? 'al-threshold-hint' : undefined} />
+            <input id="al-threshold" className="input has-unit" type="number" inputMode="decimal" step={unit === 'pp' ? '0.5' : '0.1'} min="0" max="100"
+              value={d.threshold} onChange={(e) => setD((x) => ({ ...x, threshold: e.target.value }))} aria-invalid={!!errs.threshold}
+              aria-describedby={errs.threshold ? 'al-threshold-err' : isNum(cur) ? 'al-threshold-hint' : undefined} />
             <span className="input-unit">{unit}</span>
           </div>
         </Field>
-        {already && <Banner tone="info" icon="info">The condition is already met ({unitText(d.metric, cur)} now). The first alert fires right after you save.</Banner>}
+        {already && <Banner tone="info" icon="info">The condition is already met. The first alert fires within about 30 seconds of saving.</Banner>}
         <Field id="al-cooldown" label="Cooldown" hint="Minimum time between two alerts from this rule.">
-          <select id="al-cooldown" className="select" value={d.cooldown} onChange={(e) => setD({ ...d, cooldown: Number(e.target.value) })} aria-describedby="al-cooldown-hint">
+          <select id="al-cooldown" className="select" value={d.cooldown} onChange={(e) => setD((x) => ({ ...x, cooldown: Number(e.target.value) }))} aria-describedby="al-cooldown-hint">
             {COOLDOWNS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </Field>
-        <fieldset className="fieldset">
-          <legend>Delivery</legend>
-          <div className="stack-sm">
-            <Check id="al-inapp" label="In-app notification" checked onChange={() => {}} disabled hint="Always on for this demo." />
-            <Check id="al-email" label="Email" checked={false} onChange={() => {}} disabled hint="Verify your email address to enable." />
-          </div>
-        </fieldset>
-        <Check id="al-fresh" label="Only while quote data is current" hint="Skips alerts when the venue’s data is delayed, so a stale price can’t trigger one." checked={d.onlyFresh} onChange={(v) => setD({ ...d, onlyFresh: v })} />
         <div className="preview-box" aria-live="polite">
           <p className="label">Preview</p>
-          <p>{mk && d.threshold !== '' ? ruleSentence({ ...d, threshold: num }) : 'Choose a market and a threshold to see the rule in plain words.'}</p>
+          <p>{d.marketId && d.threshold !== '' && Number.isFinite(num) ? `Notify me when the ${lcFirst(ruleText({ ...d, threshold: num }))}, at most once every ${cooldownLabel(d.cooldown)}.` : 'Choose a market and a threshold to see the rule in plain words.'}</p>
         </div>
+        <p className="muted small"><Icon n="info" size={13} /> Banthom only checks rules on current data, so a delayed quote can’t trigger one. Alerts describe prices, not trades you could make at them.</p>
         {errs.form && <p className="field-error" role="alert"><Icon n="circle-alert" size={14} />{errs.form}</p>}
       </form>
     </Sheet>
   );
 }
 
+function Delivery() {
+  const { prefs, setPref, toast } = useStore();
+  const supported = typeof window !== 'undefined' && 'Notification' in window;
+  const [perm, setPerm] = useState(supported ? Notification.permission : 'unsupported');
+  const on = !!prefs.browserNotify && perm === 'granted';
+  const change = async (v) => {
+    if (!v) { setPref('browserNotify', false); return; }
+    let p = perm;
+    if (p === 'default') {
+      try { p = await Notification.requestPermission(); } catch { p = 'denied'; }
+      setPerm(p);
+    }
+    if (p === 'granted') { setPref('browserNotify', true); toast('Browser notifications are on.'); }
+    else toast('Your browser blocked notifications. You can allow them in its site settings.', { tone: 'error' });
+  };
+  const hint = perm === 'unsupported' ? 'This browser doesn’t support notifications.'
+    : perm === 'denied' ? 'Blocked in this browser’s site settings. Allow notifications for this site, then reload.'
+      : 'A system notification when a rule fires, even if this tab is in the background. Banthom still has to be open.';
+  return (
+    <Panel title="Delivery" className="narrow-panel">
+      <Switch label="In-app notices" hint="Always on. Shown at the bottom of the screen and in the alerts menu." checked onChange={() => {}} disabled />
+      <Switch label="Browser notifications" hint={hint} checked={on} onChange={change} disabled={perm === 'unsupported' || perm === 'denied'} />
+      <Switch label="Email" hint="Needs an account. Banthom doesn’t have sign-in yet." checked={false} onChange={() => {}} disabled />
+    </Panel>
+  );
+}
+
 export function Alerts() {
   useTitle('Alerts');
-  const { alerts, history, unread, markRead, toggleAlert, removeAlert, prefs } = useStore();
+  const { alerts, history, unread, markRead, clearHistory, toggleAlert, removeAlert } = useStore();
   const mobile = useMedia('(max-width: 767px)');
   const [tab, setTab] = useState('rules');
   const [editor, setEditor] = useState({ open: false, initial: null });
-  const [quiet, setQuiet] = useState(false);
-  useEffect(() => {
-    if (pendingAlert.current) { setEditor({ open: true, initial: pendingAlert.current }); pendingAlert.current = null; }
-  }, []);
+  const ids = useMemo(() => [...new Set(alerts.map((a) => a.marketId))], [alerts]);
+  const { data } = usePolled(API2.quotes(ids), 30000);
+  const quotes = useMemo(() => Object.fromEntries(((data && data.quotes) || []).map((x) => [x.id, x])), [data]);
   const open = (initial) => setEditor({ open: true, initial });
+  const nowCell = (a) => {
+    const q = quotes[a.marketId];
+    if (!q) return <span className="muted">—</span>;
+    if (q.missing) return <Badge tone="muted" size="sm">Closed</Badge>;
+    const v = valueOf(a.metric, q);
+    return <span className={cx('mono', a.enabled && ruleHit(a, q) && 'strong')}>{fmtMetric(a.metric, v)}</span>;
+  };
+  const actions = (a) => [{ label: 'Edit', icon: 'pencil', onClick: () => open(a) }, { label: a.enabled ? 'Pause' : 'Resume', icon: a.enabled ? 'pause' : 'play', onClick: () => toggleAlert(a.id) }, { label: 'Delete', icon: 'trash-2', danger: true, onClick: () => removeAlert(a.id) }];
+
   return (
     <div className="page-stack">
-      <PageHeader title="Alerts" sub="Know when a market crosses your threshold" actions={<Button variant="primary" icon="bell-plus" onClick={() => open(null)}>Create alert</Button>} />
+      <PageHeader title="Alerts" sub="Get notified when a market crosses your threshold" actions={<Button variant="primary" icon="bell-plus" onClick={() => open(null)}>Create alert</Button>} />
+      <Banner tone="info" icon="monitor" title="Alerts run in this browser while Banthom is open.">
+        Rules and history are saved in this browser only. Banthom checks enabled rules every 30 seconds against current Kalshi and Polymarket quotes; nothing is checked while every Banthom tab is closed.
+      </Banner>
       <Tabs idBase="al" label="Alerts sections" value={tab} onChange={setTab}
-        tabs={[{ id: 'rules', label: 'Active rules', count: alerts.length }, { id: 'history', label: 'Trigger history', count: unread || undefined }, { id: 'delivery', label: 'Delivery settings' }]} />
+        tabs={[{ id: 'rules', label: 'Rules', count: alerts.length }, { id: 'history', label: 'History', count: unread || undefined }, { id: 'delivery', label: 'Delivery' }]} />
       <TabPanel idBase="al" id="rules" value={tab}>
         {alerts.length === 0 ? (
-          <Panel><EmptyState title="No alert rules yet." action={<Button variant="primary" icon="bell-plus" onClick={() => open(null)}>Create alert</Button>}>Create a rule on any market. Banthom notifies you in the app when it fires, and only while the quote is current.</EmptyState></Panel>
+          <Panel><EmptyState title="No alert rules yet." action={<Button variant="primary" icon="bell-plus" onClick={() => open(null)}>Create alert</Button>}>Create a rule on any Kalshi or Polymarket market, or use “Create alert” on a market page.</EmptyState></Panel>
         ) : mobile ? (
           <ul className="acards">
-            {alerts.map((a) => {
-              const mk = MARKET_BY_ID[a.marketId];
-              return (
-                <li key={a.id} className={cx('acard', !a.enabled && 'is-off')}>
-                  <div className="row-between"><span className="row"><VenueBadge venue={mk.venue} /><a href={`#app-market-${mk.id}`} className="link-plain strong">{mk.outcome}</a></span>
-                    <Switch label={<span className="sr-only">Enabled</span>} checked={a.enabled} onChange={() => toggleAlert(a.id)} /></div>
-                  <p className="small">{ruleSentence(a)}</p>
-                  <div className="row-between"><span className="muted small">Last triggered {a.lastTriggered ? `${fmtDateShort(a.lastTriggered)}, ${fmtTime(a.lastTriggered)}` : 'never'}</span>
-                    <span className="row"><Button size="sm" variant="ghost" onClick={() => open(a)}>Edit</Button><Button size="sm" variant="ghost" onClick={() => removeAlert(a.id)}>Delete</Button></span></div>
-                </li>
-              );
-            })}
+            {alerts.map((a) => (
+              <li key={a.id} className={cx('acard', !a.enabled && 'is-off')}>
+                <div className="row-between">
+                  <span className="row"><VenueBadge venue={a.venue} /><a href={marketHref(a.marketId)} className="link-plain strong">{itemName(a)}</a></span>
+                  <Switch label={<span className="sr-only">Enabled</span>} checked={a.enabled} onChange={() => toggleAlert(a.id)} />
+                </div>
+                <p className="small">{condText(a)} · now {nowCell(a)}</p>
+                <div className="row-between">
+                  <span className="muted small">Last fired {a.lastFiredAt ? when(a.lastFiredAt) : 'never'} · cooldown {cooldownLabel(a.cooldown)}</span>
+                  <MenuButton label={`Actions for alert on ${itemName(a)}`} items={actions(a)} />
+                </div>
+              </li>
+            ))}
           </ul>
         ) : (
           <div className="panel table-panel">
             <div className="table-scroll">
               <table className="table">
                 <caption className="sr-only">Alert rules</caption>
-                <thead><tr><th scope="col">Market</th><th scope="col">Metric</th><th scope="col">Condition</th><th scope="col">Cooldown</th><th scope="col">Channel</th><th scope="col">Last triggered</th><th scope="col">Enabled</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
+                <thead><tr><th scope="col">Market</th><th scope="col">Rule</th><th scope="col" className="num">Now</th><th scope="col">Cooldown</th><th scope="col">Last fired</th><th scope="col">On</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
                 <tbody>
-                  {alerts.map((a) => {
-                    const mk = MARKET_BY_ID[a.marketId];
-                    return (
-                      <tr key={a.id} className={cx(!a.enabled && 'row-off')}>
-                        <td className="mkt-td"><div className="mkt-cell"><a href={`#app-market-${mk.id}`}>{mk.outcome}</a><span className="mkt-cell-sub">{VENUES[mk.venue].short} · {EVENT_BY_ID[mk.eventId].title}</span></div></td>
-                        <td>{METRICS[a.metric].label}</td>
-                        <td className="mono nowrap">{OPS[a.op]} {unitText(a.metric, a.threshold)}{a.onlyFresh && <span className="muted"> · current data</span>}</td>
-                        <td>{cooldownLabel(a.cooldown)}</td>
-                        <td>In-app</td>
-                        <td className="nowrap">{a.lastTriggered ? `${fmtDateShort(a.lastTriggered)}, ${fmtTime(a.lastTriggered)}` : <span className="muted">Never</span>}</td>
-                        <td><Switch label={<span className="sr-only">Enable rule for {mk.outcome}</span>} checked={a.enabled} onChange={() => toggleAlert(a.id)} /></td>
-                        <td className="cell-tight"><MenuButton label={`Actions for alert on ${mk.outcome}`} items={[{ label: 'Edit', icon: 'pencil', onClick: () => open(a) }, { label: 'Delete', icon: 'trash-2', danger: true, onClick: () => removeAlert(a.id) }]} /></td>
-                      </tr>
-                    );
-                  })}
+                  {alerts.map((a) => (
+                    <tr key={a.id} className={cx(!a.enabled && 'row-off')}>
+                      <td className="mkt-td"><div className="mkt-cell"><a href={marketHref(a.marketId)}>{a.multi ? a.label : itemName(a)}</a><span className="mkt-cell-sub"><VenueBadge venue={a.venue} />{a.multi ? ` ${a.eventTitle}` : ''}</span></div></td>
+                      <td className="nowrap">{condText(a)}</td>
+                      <td className="num">{nowCell(a)}</td>
+                      <td>{cooldownLabel(a.cooldown)}</td>
+                      <td className="nowrap">{a.lastFiredAt ? when(a.lastFiredAt) : <span className="muted">Never</span>}</td>
+                      <td><Switch label={<span className="sr-only">Rule on {itemName(a)} enabled</span>} checked={a.enabled} onChange={() => toggleAlert(a.id)} /></td>
+                      <td className="cell-tight"><MenuButton label={`Actions for alert on ${itemName(a)}`} items={actions(a)} /></td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
           </div>
         )}
-        <p className="panel-note tab-note"><Icon n="info" size={14} />Alerts describe what the data showed. They don’t imply a trade could be executed at that price.</p>
+        {alerts.length > 0 && <p className="panel-note tab-note"><Icon n="info" size={14} />{pluralize(alerts.filter((a) => a.enabled).length, 'rule')} on. A rule fires at most once per cooldown, and only on quotes Banthom fetched within the last few minutes.</p>}
       </TabPanel>
       <TabPanel idBase="al" id="history" value={tab}>
-        <Panel title="Trigger history" sub="Newest first" actions={unread ? <Button size="sm" variant="ghost" icon="check" onClick={() => markRead(null)}>Mark all as read</Button> : null}>
-          {history.length === 0 ? <EmptyState compact title="Nothing has fired yet." /> : (
+        <Panel title="History" sub="Newest first · last 200 kept in this browser"
+          actions={history.length ? <>{unread > 0 && <Button size="sm" variant="ghost" icon="check" onClick={() => markRead(null)}>Mark all as read</Button>}<Button size="sm" variant="ghost" icon="trash-2" onClick={clearHistory}>Clear</Button></> : null}>
+          {history.length === 0 ? <EmptyState compact title="Nothing has fired yet.">Fired alerts appear here with the value that triggered them.</EmptyState> : (
             <ol className="hist">
               {history.map((h) => (
-                <li key={h.id} className={cx(h.unread && 'is-unread', h.suppressed && 'is-suppressed')}>
-                  <span className="hist-time mono">{fmtDateShort(h.t)}<br />{fmtTime(h.t)}</span>
+                <li key={h.id} className={cx(h.unread && 'is-unread')}>
+                  <span className="hist-time mono">{fmtDateShort(h.t)}<br />{fmtTimeSec(h.t)}</span>
                   <div className="grow">
                     <p>{h.text}</p>
-                    {h.suppressed && <Badge tone="warning" icon="clock" size="sm">Suppressed: delayed data</Badge>}
+                    {h.marketId && <a className="small" href={marketHref(h.marketId)}>Open market</a>}
                   </div>
                   {h.unread && <button type="button" className="btn btn-link small" onClick={() => markRead(h.id)}>Mark read</button>}
                 </li>
@@ -291,17 +254,7 @@ export function Alerts() {
           )}
         </Panel>
       </TabPanel>
-      <TabPanel idBase="al" id="delivery" value={tab}>
-        <Panel title="Delivery settings" className="narrow-panel">
-          <Switch label="In-app notifications" hint="Shown in the alerts menu and on this page." checked onChange={() => {}} disabled />
-          <Switch label="Email digest" hint="Available after you verify your email address." checked={false} onChange={() => {}} disabled />
-          <Switch label="Quiet hours, 10 PM to 7 AM ET" hint="Alerts that fire during quiet hours wait in your history." checked={quiet} onChange={setQuiet} />
-          <div className="switch-row">
-            <div className="switch-text"><p className="switch-label">Browser notifications</p><p className="switch-hint">Banthom asks for permission only after you choose this, never on page load. Not available in this demo frame.</p></div>
-            <Button size="sm" variant="secondary" disabled>Enable</Button>
-          </div>
-        </Panel>
-      </TabPanel>
+      <TabPanel idBase="al" id="delivery" value={tab}><Delivery /></TabPanel>
       <AlertEditor open={editor.open} initial={editor.initial} onClose={() => setEditor({ open: false, initial: null })} />
     </div>
   );

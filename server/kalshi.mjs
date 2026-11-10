@@ -324,6 +324,17 @@ export function start() {
   })();
 }
 
+// Read-only view of the snapshot for the cross-venue layer (server/hub.mjs).
+export const snapshot = () => ({ markets: state.markets, events: state.events, byEvent: state.byEvent, lastPassAt: state.lastPassAt || 0 });
+
+// An event with its open markets, for event pages when the event isn't in the snapshot.
+export async function eventDetail(t) {
+  const known = state.events.get(t);
+  if (known) return { event: known, markets: (state.byEvent.get(t) || []).map((x) => state.markets.get(x)).filter(Boolean) };
+  const info = await eventInfo(t);
+  return { event: info.ev, markets: info.siblings.map(withDerived) };
+}
+
 export const clientConfig = () => ({ refreshSeconds: REFRESH_S, recentSeconds: RECENT_S, categories: ALL ? [] : CATEGORIES });
 
 export function status() {

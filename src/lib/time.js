@@ -1,5 +1,4 @@
-// Demo clock. Every timestamp in the prototype is UTC-backed and displayed in US Eastern time.
-// The fixtures describe a simulated snapshot taken Nov 6, 2026 at 2:15 PM ET.
+// Time helpers. Timestamps are UTC milliseconds, displayed in US Eastern time.
 
 const nthSunday = (y, month0, n) => {
   const first = new Date(Date.UTC(y, month0, 1)).getUTCDay();
@@ -15,11 +14,6 @@ export function dt(y, m, d, h = 0, mi = 0) {
   return wall + offsetH * 3600e3;
 }
 
-export const SNAPSHOT = dt(2026, 11, 6, 14, 15);
 export const MIN = 60e3;
 export const HOUR = 3600e3;
 export const DAY = 86400e3;
-
-const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
-// Simulated "now": the snapshot plus however long this page has been open.
-export const demoNow = () => SNAPSHOT + ((typeof performance !== 'undefined' ? performance.now() : 0) - t0);
