@@ -14,6 +14,7 @@ import { Alerts } from './Alerts.jsx';
 import { Watchlists } from './Watchlists.jsx';
 import { Settings, Help, TerminalNotFound } from './Misc.jsx';
 import { MarketPage, LiveOff } from './Live.jsx';
+import { Review } from './Review.jsx';
 import { LIVE, LIVE_VENUES, venueName, slugOf, CATEGORY_ICON } from '../data/live.js';
 
 const { useState, useEffect, useLayoutEffect } = React;
@@ -42,6 +43,7 @@ export function parseApp(hash) {
   if (h === 'watchlists') return { page: 'watchlists', nav: 'watchlists' };
   if (h.startsWith('watchlists-')) return { page: 'watchlists', nav: 'watchlists', id: h.slice(11) };
   if (h === 'alerts') return { page: 'alerts', nav: 'alerts' };
+  if (h === 'review') return { page: 'review', nav: 'compare' };
   if (h === 'settings') return { page: 'settings', nav: 'settings' };
   if (h === 'help') return { page: 'help', nav: 'help' };
   return { page: 'missing', nav: null };
@@ -60,6 +62,7 @@ function crumbsFor(r) {
     case 'compare-detail': return [{ label: 'Compare', href: '#app-compare' }, { label: 'Pair' }];
     case 'watchlists': return [{ label: 'Watchlists' }];
     case 'alerts': return [{ label: 'Alerts' }];
+    case 'review': return [{ label: 'Compare', href: '#app-compare' }, { label: 'Pair review' }];
     case 'settings': return [{ label: 'Settings' }];
     case 'help': return [{ label: 'Help' }];
     default: return [{ label: 'Not found' }];
@@ -106,6 +109,7 @@ export function Terminal({ hash }) {
       case 'compare-detail': page = <CompareDetail key={route.id} id={route.id} />; break;
       case 'watchlists': page = <Watchlists listId={route.id} />; break;
       case 'alerts': page = <Alerts />; break;
+      case 'review': page = <Review />; break;
       case 'settings': page = <Settings />; break;
       case 'help': page = <Help />; break;
       default: page = <TerminalNotFound />;

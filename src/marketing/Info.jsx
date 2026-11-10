@@ -141,7 +141,7 @@ const TOC = [
   ['freshness', 'Timestamps and freshness'],
   ['volume', 'Volume and open interest'],
   ['charts', 'Price history and missing data'],
-  ['matching', 'Suggested cross-venue pairs'],
+  ['matching', 'Suggested and verified pairs'],
   ['closed', 'Closed and settled markets'],
   ['saved', 'Watchlists and alerts'],
   ['changes', 'Methodology change log'],
@@ -175,7 +175,7 @@ export function Methodology() {
           <p className="eyebrow">Methodology and data</p>
           <h1 className="mkt-h1 page-hero-h1" tabIndex={-1} data-route-focus>Know what each number means.</h1>
           <p className="hero-sub">Every number in Banthom comes from Kalshi or Polymarket. This page explains where each one comes from, how current it is and where it stops being reliable.</p>
-          <div className="row"><Button variant="secondary" onClick={() => jump('prices')} iconRight="arrow-down">Read the price definitions</Button><Badge tone="muted">Version 0.2 · Nov 10, 2026</Badge></div>
+          <div className="row"><Button variant="secondary" onClick={() => jump('prices')} iconRight="arrow-down">Read the price definitions</Button><Badge tone="muted">Version 0.3 · Nov 10, 2026</Badge></div>
         </div>
       </section>
       <section className="mkt-sec pt-0">
@@ -270,7 +270,7 @@ export function Methodology() {
             </section>
 
             <section id="m-matching" tabIndex={-1}>
-              <h2>Suggested cross-venue pairs</h2>
+              <h2>Suggested and verified pairs</h2>
               <p>Banthom suggests where Kalshi and Polymarket list the same question. Every ten minutes it compares active markets that traded at least $100 in the past 24 hours:</p>
               <ul>
                 <li>Titles are normalised (common words dropped, synonyms such as “cut” and “decrease” aligned) and compared word by word.</li>
@@ -279,7 +279,8 @@ export function Methodology() {
                 <li>For Polymarket markets with named sides, the Yes side must appear in the Kalshi market.</li>
                 <li>A pair is kept only when each market is the other’s best match.</li>
               </ul>
-              <p>Every pair is labelled <strong>suggested</strong> and <strong>unverified</strong>. Nobody has reviewed the rules, and the venues can still settle differently: different sources, deadlines, timezones or edge cases. The match percentage measures how closely the titles agree; it isn’t a probability that the contracts are equivalent.</p>
+              <p>A new pair is labelled <strong>suggested</strong> and <strong>unverified</strong>: nobody has reviewed the rules yet, and the venues can still settle differently (different sources, deadlines, timezones or edge cases). The match percentage measures how closely the titles agree; it isn’t a probability that the contracts are equivalent.</p>
+              <p>A reviewer then reads both venues’ rules. A pair that asks the same question is marked <strong>Verified</strong> and stays paired for as long as both markets are open. A pair that doesn’t is removed and never suggested again. Verified means the questions match; fees, settlement currency and order depth still differ between venues.</p>
               <p className="formula-block"><code>gap = Kalshi Yes midpoint − Polymarket Yes midpoint</code><span>In percentage points, before fees, order depth, execution timing, settlement currency and venue limits. A gap is not an opportunity until both rule sets have been read.</span></p>
             </section>
 
@@ -296,6 +297,7 @@ export function Methodology() {
             <section id="m-changes" tabIndex={-1}>
               <h2>Methodology change log</h2>
               <ul className="changelog">
+                <li><span className="mono">v0.3</span><span>Nov 10, 2026</span><span>Pairs can be reviewed: verified pairs are labelled, pairs found to differ are removed.</span></li>
                 <li><span className="mono">v0.2</span><span>Nov 10, 2026</span><span>Real Kalshi and Polymarket data replaces the simulated venues. Suggested cross-venue pairs replace reviewed matches. Research summaries are removed until real sources are in place.</span></li>
                 <li><span className="mono">v0.1</span><span>Nov 6, 2026</span><span>Draft methodology for the prototype review.</span></li>
               </ul>

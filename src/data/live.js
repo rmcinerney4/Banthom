@@ -167,6 +167,18 @@ export const API2 = {
   match: (id) => `/api/matches/${encodeURIComponent(id)}`,
 };
 export const fetchJSON = (url, signal) => getJSON(url, signal);
+// Pair review (password-protected). The password travels in a header and is kept only for this browser tab.
+export async function reviewCall(key, path = '', body = null) {
+  const res = await fetch(`/api/review/pairs${path}`, {
+    method: body ? 'POST' : 'GET', cache: 'no-store',
+    headers: { accept: 'application/json', 'x-review-key': key, ...(body ? { 'content-type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let data = null;
+  try { data = await res.json(); } catch { /* not JSON */ }
+  if (!res.ok) { const err = new Error((data && data.error) || `Request failed (${res.status})`); err.status = res.status; throw err; }
+  return data;
+}
 // Venue status for the top bar and banners (shared poll).
 export const useStatus = () => usePolled(LIVE ? API2.status : null, 30000);
 

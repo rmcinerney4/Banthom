@@ -29,6 +29,13 @@ export const rowName = (r) => {
   return r.yes ? `${base} (Yes = ${r.yes})` : base;
 };
 
+// Pair status: verified by a person who read both venues' rules, or suggested by title matching.
+export function PairBadge({ status, size, short }) {
+  return status === 'verified'
+    ? <Badge tone="success" icon="badge-check" size={size} tip="A reviewer read both venues’ rules and confirmed they ask the same question.">Verified</Badge>
+    : <Badge tone="warning" icon="circle-dashed" size={size} tip="Matched automatically from titles, numbers and dates. Not reviewed.">{short ? 'Suggested' : 'Suggested · unverified'}</Badge>;
+}
+
 // ---------------------------------------------------------------- Market search (server-side)
 // Combobox over every open market on both venues. Used by the alert editor, watchlists and the command palette.
 export function MarketSearch({ id, onPick, placeholder = 'Search markets', exclude, invalid, describedBy, autoFocus, label = 'Markets' }) {

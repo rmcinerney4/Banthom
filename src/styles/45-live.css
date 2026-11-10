@@ -53,3 +53,17 @@
 .wl-gone .related-link { display: flex; align-items: center; gap: 10px; }
 .wl-loading { padding: 16px; }
 .qstrip.qstrip-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+/* Pair review */
+.rv-list-panel .panel-body { padding: 0; }
+.rv-list { list-style: none; margin: 0; padding: 0; max-height: 70vh; overflow-y: auto; }
+.rv-item { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 10px 16px; border: 0; border-bottom: 1px solid var(--grid); background: transparent; color: var(--text-2); text-align: left; font-size: 13px; line-height: 18px; cursor: pointer; }
+.rv-item:hover { background: var(--elevated); color: var(--text); }
+.rv-item.is-active { background: rgba(70, 200, 229, 0.08); color: var(--text); box-shadow: inset 2px 0 0 var(--accent); }
+.rv-item-meta { color: var(--text-3); font-size: 12px; }
+.rv-facts { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-bottom: 14px; color: var(--text-2); font-size: 13px; }
+.rv-facts strong { color: var(--text); font-weight: 600; }
+.rv-actions { margin-top: 14px; flex-wrap: wrap; }
+.rv-keys { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
+.rv-rules { max-height: 420px; overflow-y: auto; }
+@media (max-width: 1023px) { .rv-list { max-height: 240px; } .rv-keys { display: none; } }

@@ -133,7 +133,7 @@ export function Dashboard() {
           </Panel>
         )}
         {show('pairs') && (
-          <Panel title="Same question, two venues" sub="Most active suggested Kalshi–Polymarket pairs · unverified" className="s-5 m-order-5"
+          <Panel title="Same question, two venues" sub="Most active Kalshi–Polymarket pairs" className="s-5 m-order-5"
             actions={<Button size="sm" variant="ghost" href="#app-compare" iconRight="arrow-right">Compare</Button>}>
             {!ov ? <Skeleton h={160} /> : ov.pairs && ov.pairs.length ? (
               <ul className="related">
@@ -141,6 +141,7 @@ export function Dashboard() {
                   <li key={p.id}>
                     <a href={compareHref(p.id)} className="related-link">
                       <span className="grow related-name">{p.k.multi ? `${p.k.eventTitle}: ${p.k.label}` : p.k.eventTitle}</span>
+                      {p.status === 'verified' && <Badge tone="success" icon="badge-check" size="sm">Verified</Badge>}
                       <span className="mono small" data-tip="Kalshi Yes mid − Polymarket Yes mid">{fmtPP(p.gap)}</span>
                     </a>
                   </li>
@@ -149,7 +150,7 @@ export function Dashboard() {
             ) : <EmptyState compact title={ov.pairStatus && ov.pairStatus.builtAt ? 'No pairs found yet' : 'Finding pairs…'}>
               {ov.pairStatus && ov.pairStatus.builtAt ? 'No markets currently look like the same question on both venues.' : 'Banthom compares both venues a few minutes after the server starts.'}
             </EmptyState>}
-            <p className="panel-note"><Icon n="info" size={14} />Pairs are matched from titles, numbers and dates. Check both venues’ rules before relying on a gap; prices exclude fees.</p>
+            <p className="panel-note"><Icon n="info" size={14} />Unless marked Verified, pairs are matched automatically from titles, numbers and dates. Check both venues’ rules before relying on a gap; prices exclude fees.</p>
           </Panel>
         )}
       </div>

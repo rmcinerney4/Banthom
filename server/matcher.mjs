@@ -100,10 +100,8 @@ const namesAgree = (a, b) => {
 };
 const yearsAgree = (a, b) => !a.size || !b.size || [...a].some((y) => b.has(y));
 
-export function createMatcher({ kalshi, polymarket, usd24, minUsd = 100, maxPerVenue = 40000, threshold = 0.6 }) {
-  let pairs = [];
-  let byMarket = new Map();
-  let byId = new Map();
+export function createMatcher({ kalshi, polymarket, usd24, minUsd = 100, maxPerVenue = 40000, threshold = 0.6, reviews = null }) {
+  let pairs = []; // suggested by the last build, before reviews are applied
   let builtAt = 0;
   let lastMs = null;
   let running = false;
@@ -139,9 +137,13 @@ export function createMatcher({ kalshi, polymarket, usd24, minUsd = 100, maxPerV
     running = true;
     const t0 = Date.now();
     try {
-      const K = candidates('kalshi', ks);
+      // Reviewed pairs: markets in a verified pair are settled, and pairs marked wrong are never suggested again.
+      const settled = new Set();
+      const wrong = new Set();
+      if (reviews) for (const r of reviews.all()) { if (r.status === 'verified') { settled.add(r.k); settled.add(r.p); } else if (r.status === 'wrong') wrong.add(r.id); }
+      const K = candidates('kalshi', ks).filter((c) => !settled.has(c.id));
       await tick();
-      const P = candidates('polymarket', ps);
+      const P = candidates('polymarket', ps).filter((c) => !settled.has(c.id));
       await tick();
       // How many events use each title word. A rare title word on one side only means a different question.
       const edf = new Map();
@@ -195,6 +197,7 @@ export function createMatcher({ kalshi, polymarket, usd24, minUsd = 100, maxPerV
           if (kc.dir !== pc.dir) continue;
           if (kc.m.closes && pc.m.closes && Math.abs(kc.m.closes - pc.m.closes) > 7 * DAY) continue;
           // Named outcomes (e.g. two teams): Polymarket's "Yes" name must be the Kalshi outcome, and its "No" name must not be.
+          if (wrong.size && wrong.has(pairId(kc.id, pc.id))) continue;
           if (pc.yes && !pc.yes.every((w) => kc.words.includes(w))) continue;
           if (pc.no && kc.label && kc.label.length && pc.no.every((w) => kc.label.includes(w))) continue;
           // Two outcomes of multi-outcome events must name the same outcome ("Finland" is not "San Marino").
@@ -227,9 +230,6 @@ export function createMatcher({ kalshi, polymarket, usd24, minUsd = 100, maxPerV
         kept.push([K[b.ki], P[pi]]);
       });
       pairs = next;
-      byMarket = new Map();
-      byId = new Map();
-      for (const pr of next) { byMarket.set(pr.k, pr); byMarket.set(pr.p, pr); byId.set(pr.id, pr); }
       builtAt = Date.now();
       lastMs = builtAt - t0;
       lastError = null;
@@ -247,6 +247,34 @@ export function createMatcher({ kalshi, polymarket, usd24, minUsd = 100, maxPerV
     }
   }
 
+  // What the site shows: verified pairs first-class, suggestions minus anything reviewed as wrong
+  // or involving a market that is already in a verified pair. Recomputed when a build or a review lands.
+  let eff = { key: null, list: [], byId: new Map(), byMarket: new Map() };
+  function view() {
+    const key = `${builtAt}.${reviews ? reviews.getVersion() : 0}`;
+    if (eff.key === key) return eff;
+    const list = [];
+    const taken = new Set();
+    if (reviews) {
+      for (const r of reviews.all()) {
+        if (r.status !== 'verified') continue;
+        list.push({ id: r.id, k: r.k, p: r.p, score: r.score ?? 1, status: 'verified', note: r.note || '', reviewedAt: r.at });
+        taken.add(r.k); taken.add(r.p);
+      }
+    }
+    for (const pr of pairs) {
+      if (taken.has(pr.k) || taken.has(pr.p)) continue;
+      const r = reviews && reviews.get(pr.id);
+      if (r && r.status === 'wrong') continue;
+      list.push({ ...pr, status: 'suggested' });
+    }
+    const byId = new Map();
+    const byMarket = new Map();
+    for (const pr of list) { byId.set(pr.id, pr); byMarket.set(pr.k, pr); byMarket.set(pr.p, pr); }
+    eff = { key, list, byId, byMarket };
+    return eff;
+  }
+
   let started = false;
   return {
     start(everyMs = 10 * 60e3) {
@@ -257,10 +285,10 @@ export function createMatcher({ kalshi, polymarket, usd24, minUsd = 100, maxPerV
       setInterval(build, everyMs);
     },
     build,
-    version: () => builtAt,
-    pairs: () => pairs,
-    get: (id) => byId.get(id) || null,
-    forMarket: (id) => byMarket.get(id) || null,
-    status: () => ({ builtAt: builtAt || null, pairs: pairs.length, seconds: lastMs == null ? null : Math.round(lastMs / 100) / 10, lastError, minUsd }),
+    version: () => view().key,
+    pairs: () => view().list,
+    get: (id) => view().byId.get(id) || null,
+    forMarket: (id) => view().byMarket.get(id) || null,
+    status: () => ({ builtAt: builtAt || null, pairs: view().list.length, verified: view().list.filter((x) => x.status === 'verified').length, seconds: lastMs == null ? null : Math.round(lastMs / 100) / 10, lastError, minUsd }),
   };
 }

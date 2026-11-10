@@ -5,17 +5,24 @@ import { PriceChart } from '../charts/charts.jsx';
 import { useMedia, go } from '../lib/hooks.js';
 import { fmtCentsAuto, fmtCents, fmtDate, fmtDateShort, fmtDateTimeShort, fmtTimeSec, fmtInt, fmtPP, isNum } from '../lib/format.js';
 import { usePolled, API2, LIVE_VENUES, marketHref, compareHref, buildSeries } from '../data/live.js';
-import { useTitle, SortHeader, rowKeyNav, FeedBanners, Fresh, StarButton, volText, usePageCrumbs } from './kit.jsx';
+import { useTitle, SortHeader, rowKeyNav, FeedBanners, Fresh, StarButton, volText, usePageCrumbs, PairBadge } from './kit.jsx';
 
 const { useState, useEffect, useMemo } = React;
 
 const gapText = (g) => fmtPP(g);
 const nameOf = (r) => (r.multi ? `${r.eventTitle}: ${r.label}` : r.eventTitle) + (r.yes ? ` (Yes = ${r.yes})` : '');
 
-function Caveat() {
+function Caveat({ status }) {
+  if (status === 'verified') {
+    return (
+      <Banner tone="info" icon="badge-check" title="Verified pair.">
+        A reviewer read both venues’ rules and confirmed they ask the same question. Prices still exclude fees, and the venues settle in different currencies.
+      </Banner>
+    );
+  }
   return (
-    <Banner tone="info" icon="circle-dashed" title="Suggested pairs, not verified matches.">
-      Banthom pairs markets whose titles, numbers, outcome names and closing dates line up. The venues’ rules can still differ (sources, deadlines, edge cases), so read both before relying on a gap. Prices exclude fees.
+    <Banner tone="info" icon="circle-dashed" title={status ? 'Suggested pair, not yet verified.' : 'Verified pairs have been checked by a person. Suggested pairs have not.'}>
+      Banthom suggests pairs whose titles, numbers, outcome names and closing dates line up. Until a pair is verified, the venues’ rules can still differ (sources, deadlines, edge cases), so read both before relying on a gap. Prices exclude fees.
     </Banner>
   );
 }
@@ -27,15 +34,17 @@ export function CompareList() {
   const [q, setQ] = useState('');
   const [sort, setSort] = useState({ key: 'activity', dir: 'desc' });
   const [limit, setLimit] = useState(50);
+  const [only, setOnly] = useState('all');
   useEffect(() => { const t = setTimeout(() => setQ(qInput.trim()), 250); return () => clearTimeout(t); }, [qInput]);
-  useEffect(() => { setLimit(50); }, [q, sort]);
-  const { data, error, loading, retry } = usePolled(API2.matches({ q, sort: sort.key, limit }), 60000, { keep: true });
+  useEffect(() => { setLimit(50); }, [q, sort, only]);
+  const { data, error, loading, retry } = usePolled(API2.matches({ q, sort: sort.key, limit, status: only === 'all' ? null : only }), 60000, { keep: true });
+  const counts = data && data.counts;
   const ps = data && data.pairStatus;
   const rows = data ? data.pairs : [];
   return (
     <div className="page-stack">
       <PageHeader title="Compare" sub="The same question on Kalshi and Polymarket, side by side"
-        meta={ps && ps.builtAt ? <span className="muted small"><Icon n="clock" size={13} /> Pairs updated {fmtTimeSec(ps.builtAt)} · {fmtInt(ps.pairs)} suggested</span> : null} />
+        meta={ps && ps.builtAt ? <span className="muted small"><Icon n="clock" size={13} /> Pairs updated {fmtTimeSec(ps.builtAt)} · {counts ? `${fmtInt(counts.verified)} verified · ${fmtInt(counts.suggested)} suggested` : `${fmtInt(ps.pairs)} pairs`}</span> : null} />
       <Caveat />
       {error && !data && <EmptyState title="Couldn’t load pairs." action={<Button variant="secondary" icon="refresh-cw" onClick={retry}>Try again</Button>}>{error.message}</EmptyState>}
       {data && <FeedBanners status={data.status} />}
@@ -45,14 +54,16 @@ export function CompareList() {
             <Icon n="search" size={16} />
             <input className="input" type="search" value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder="Search pairs" aria-label="Search pairs" />
           </div>
+          <Segmented label="Show" value={only} onChange={setOnly}
+            options={[{ id: 'all', label: 'All' }, { id: 'verified', label: counts ? `Verified (${counts.verified})` : 'Verified' }, { id: 'suggested', label: 'Suggested' }]} />
           <Segmented label="Sort pairs by" value={sort.key} onChange={(k) => setSort({ key: k, dir: 'desc' })}
             options={[{ id: 'activity', label: 'Most active' }, { id: 'gap', label: 'Widest gap' }, { id: 'closes', label: 'Closing soonest' }]} />
           <span className="muted small live-count" aria-live="polite">{data ? `${fmtInt(data.matched)} ${data.matched === 1 ? 'pair' : 'pairs'}` : ''}</span>
         </div>
         {!data && loading ? <div className="live-skeleton">{[0, 1, 2, 3].map((i) => <Skeleton key={i} h={44} />)}</div>
           : !rows.length ? (
-            <EmptyState title={ps && ps.builtAt ? (q ? 'No pairs match' : 'No pairs found') : 'Finding pairs…'}>
-              {ps && ps.builtAt ? (q ? 'Try a shorter search.' : 'No active markets currently look like the same question on both venues.') : 'Banthom compares both venues a few minutes after the server starts, then every ten minutes.'}
+            <EmptyState title={ps && ps.builtAt ? (q ? 'No pairs match' : only === 'verified' ? 'No verified pairs yet' : 'No pairs found') : 'Finding pairs…'}>
+              {ps && ps.builtAt ? (q ? 'Try a shorter search.' : only === 'verified' ? 'Pairs appear here once a reviewer has read both venues’ rules and confirmed them.' : 'No active markets currently look like the same question on both venues.') : 'Banthom compares both venues a few minutes after the server starts, then every ten minutes.'}
             </EmptyState>
           ) : mobile ? (
             <ul className="mcards">
@@ -63,6 +74,7 @@ export function CompareList() {
                     <span className="mcard-q"><VenueBadge venue="kalshi" />{fmtCentsAuto(p.k.mid)}</span>
                     <span className="mcard-q"><VenueBadge venue="polymarket" />{fmtCentsAuto(p.p.mid)}</span>
                     <span className="mcard-q"><span className="label">Gap</span><span className="mono">{gapText(p.gap)}</span></span>
+                    <PairBadge status={p.status} size="sm" short />
                   </div>
                 </li>
               ))}
@@ -79,7 +91,7 @@ export function CompareList() {
                     <SortHeader col="gap" sort={sort} setSort={(s) => setSort({ key: s.key, dir: 'desc' })} num tip="Kalshi Yes midpoint minus Polymarket Yes midpoint, in percentage points. Excludes fees.">Gap</SortHeader>
                     <th scope="col" className="num">Volume 24h</th>
                     <th scope="col" className="num">Closes</th>
-                    <th scope="col" className="num">Match</th>
+                    <th scope="col" className="num">Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -96,7 +108,7 @@ export function CompareList() {
                       <td className="num mono">{gapText(p.gap)}</td>
                       <td className="num"><span className="nowrap">{volText(p.k)}</span><br /><span className="nowrap muted small">{volText(p.p)}</span></td>
                       <td className="num"><span className="nowrap">{fmtDateShort(p.k.closes)}</span><br /><span className="nowrap muted small">{fmtDateShort(p.p.closes)}</span></td>
-                      <td className="num"><Badge tone="warning" icon="circle-dashed" size="sm">{Math.round(p.score * 100)}%</Badge></td>
+                      <td className="num"><PairBadge status={p.status} size="sm" short />{p.status !== 'verified' && <><br /><span className="muted small">Titles {Math.round(p.score * 100)}%</span></>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -107,7 +119,7 @@ export function CompareList() {
           <div className="live-more">{limit < 500 ? <Button variant="secondary" size="sm" onClick={() => setLimit((n) => Math.min(500, n + 50))}>Show 50 more</Button> : <span className="muted small">Showing the first 500.</span>}</div>
         )}
       </Panel>
-      <p className="muted small live-note">Match % is how closely the two titles agree after normalising wording, numbers and dates. It is not a probability that the contracts are equivalent.</p>
+      <p className="muted small live-note">Verified pairs were confirmed by a reviewer who read both venues’ rules. For suggested pairs, the title % is how closely the two titles agree after normalising wording, numbers and dates; it is not a probability that the contracts are equivalent.</p>
     </div>
   );
 }
@@ -187,8 +199,11 @@ export function CompareDetail({ id }) {
     <div className="page-stack">
       <PageHeader title={nameOf(pr.k)} sub={`Polymarket: ${nameOf(pr.p)}`}
         crumbs={[{ label: 'Compare', href: '#app-compare' }, { label: pr.k.label }]}
-        meta={<><Badge tone="warning" icon="circle-dashed">Suggested · unverified</Badge><span className="muted small">Title match {Math.round(pr.score * 100)}%</span></>} />
-      <Caveat />
+        meta={<><PairBadge status={pr.status} />{pr.status === 'verified'
+          ? <span className="muted small">Reviewed {fmtDate(pr.reviewedAt)}</span>
+          : <span className="muted small">Title match {Math.round(pr.score * 100)}%</span>}</>} />
+      <Caveat status={pr.status} />
+      {pr.status === 'verified' && pr.note && <p className="muted small live-note"><Icon n="message-square" size={13} /> Reviewer’s note: {pr.note}</p>}
       <FeedBanners status={data.status} />
       <div className="qstrip qstrip-4" role="group" aria-label="Price gap">
         <div className="qs-cell"><span className="qs-k">Kalshi Yes mid</span><span className="qs-v">{fmtCentsAuto(pr.k.mid)}</span></div>

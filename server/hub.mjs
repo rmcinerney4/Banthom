@@ -277,7 +277,7 @@ export async function eventPage(venue, id) {
     },
     markets: rows,
     midSum: event.exclusive && mids.length === rows.length && rows.length > 1 ? Math.round(mids.reduce((a, b) => a + b, 0) * 10) / 10 : null,
-    pairs: matcher ? rows.map((r) => matcher.forMarket(r.id)).filter(Boolean).map((p) => ({ id: p.id, k: p.k, p: p.p })) : [],
+    pairs: matcher ? rows.map((r) => matcher.forMarket(r.id)).filter(Boolean).map((p) => ({ id: p.id, k: p.k, p: p.p, status: p.status || 'suggested' })) : [],
   };
 }
 
@@ -288,7 +288,7 @@ function pairRow(p) {
   if (!k || !pm) return null;
   const gap = k.mid != null && pm.mid != null ? Math.round((k.mid - pm.mid) * 10) / 10 : null;
   const activity = Math.min(k.usd24 ?? 0, pm.usd24 ?? 0);
-  return { id: p.id, score: p.score, k, p: pm, gap, activity };
+  return { id: p.id, score: p.score, k, p: pm, gap, activity, status: p.status || 'suggested', note: p.note || '', reviewedAt: p.reviewedAt || null };
 }
 
 export function matchesList(params) {
@@ -297,11 +297,14 @@ export function matchesList(params) {
   const sort = ['gap', 'activity', 'closes', 'score'].includes(params.get('sort')) ? params.get('sort') : 'activity';
   const limit = int(params.get('limit'), 50, 1, 500);
   const offset = int(params.get('offset'), 0, 0, 5000);
-  const key = JSON.stringify([q, sort, limit, offset]);
+  const only = ['verified', 'suggested'].includes(params.get('status')) ? params.get('status') : null;
+  const key = JSON.stringify([q, sort, limit, offset, only]);
   let res = c.matches.get(key);
   if (!res) {
     const terms = q.split(/\s+/).filter(Boolean);
     let rows = (matcher ? matcher.pairs() : []).map(pairRow).filter(Boolean);
+    const counts = { verified: rows.filter((r) => r.status === 'verified').length, suggested: rows.filter((r) => r.status !== 'verified').length };
+    if (only) rows = rows.filter((r) => r.status === only);
     if (terms.length) {
       rows = rows.filter((r) => {
         const hay = `${r.k.eventTitle} ${r.k.label} ${r.p.eventTitle} ${r.p.label} ${r.k.ticker}`.toLowerCase();
@@ -311,15 +314,15 @@ export function matchesList(params) {
     const val = { gap: (r) => (r.gap == null ? -1 : Math.abs(r.gap)), activity: (r) => r.activity, score: (r) => r.score,
       closes: (r) => -(Math.min(r.k.closes ?? Infinity, r.p.closes ?? Infinity)) }[sort];
     rows.sort((a, b) => val(b) - val(a));
-    res = { version: c.version, status: venueStatus(), pairStatus: matcher ? matcher.status() : null, matched: rows.length, offset, limit, pairs: rows.slice(offset, offset + limit) };
+    res = { version: c.version, status: venueStatus(), pairStatus: matcher ? matcher.status() : null, counts, matched: rows.length, offset, limit, pairs: rows.slice(offset, offset + limit) };
     if (c.matches.size > 100) c.matches.clear();
     c.matches.set(key, res);
   }
   return res;
 }
 
-export async function matchDetail(id) {
-  const p = matcher && matcher.get(id);
+export async function matchDetail(id, fallback = null) {
+  const p = (matcher && matcher.get(id)) || fallback;
   if (!p) return null;
   const row = pairRow(p);
   if (!row) return null;
@@ -337,5 +340,24 @@ export function pairForMarket(id) {
   if (!p) return null;
   const otherId = p.k === id ? p.p : p.k;
   const other = rowById(otherId);
-  return other ? { id: p.id, score: p.score, other } : null;
+  return other ? { id: p.id, score: p.score, other, status: p.status || 'suggested', note: p.note || '' } : null;
 }
+
+// ---------------------------------------------------------------- Review queue (password-protected routes)
+// Everything a reviewer needs: current suggestions, verified pairs and pairs marked wrong (with stored names when a market has closed).
+export function reviewQueue(reviews) {
+  const out = [];
+  const seen = new Set();
+  for (const p of matcher ? matcher.pairs() : []) {
+    const row = pairRow(p);
+    if (row) { out.push(row); seen.add(p.id); }
+  }
+  for (const r of reviews.all()) {
+    if (seen.has(r.id)) continue;
+    const row = pairRow({ id: r.id, k: r.k, p: r.p, score: r.score ?? 0, status: r.status, note: r.note, reviewedAt: r.at });
+    out.push(row || { id: r.id, score: r.score ?? 0, k: null, p: null, kName: r.kName, pName: r.pName, gap: null, activity: 0, status: r.status, note: r.note || '', reviewedAt: r.at, closed: true });
+  }
+  out.sort((a, b) => b.activity - a.activity);
+  return { status: venueStatus(), pairStatus: matcher ? matcher.status() : null, pairs: out };
+}
+export const rawPair = (id) => (matcher && matcher.get(id)) || null;

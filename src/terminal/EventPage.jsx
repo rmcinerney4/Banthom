@@ -64,7 +64,7 @@ export function EventPage({ venue, id }) {
         <div className="s-4 md-12 col-stack">
           <Panel title="About this event"><KeyValue items={facts} /><p className="panel-note"><Icon n="clock" size={14} />Prices fetched from {v.name}; last update {lastObs ? fmtTimeSec(lastObs) : '—'}.</p></Panel>
           {data.pairs && data.pairs.length > 0 && (
-            <Panel title={`Also on ${venue === 'kalshi' ? 'Polymarket' : 'Kalshi'}`} sub="Suggested matches · unverified">
+            <Panel title={`Also on ${venue === 'kalshi' ? 'Polymarket' : 'Kalshi'}`} sub="Verified pairs are marked; the rest are suggested">
               <ul className="related">
                 {data.pairs.map((p) => {
                   const mine = rows.find((r) => r.id === (venue === 'kalshi' ? p.k : p.p));
@@ -72,6 +72,7 @@ export function EventPage({ venue, id }) {
                     <li key={p.id}>
                       <a href={compareHref(p.id)} className="related-link">
                         <span className="grow related-name">{mine ? mine.label : 'Outcome'}</span>
+                        {p.status === 'verified' && <Badge tone="success" icon="badge-check" size="sm">Verified</Badge>}
                         <Icon n="git-compare-arrows" size={14} />
                       </a>
                     </li>

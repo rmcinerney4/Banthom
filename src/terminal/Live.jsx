@@ -198,13 +198,13 @@ function PairPanel({ pair, here }) {
   const o = pair.other;
   const gap = here != null && o.mid != null ? Math.round((here - o.mid) * 10) / 10 : null;
   return (
-    <Panel title={`Also on ${venueName(o.venue)}`} sub="Suggested match · unverified">
+    <Panel title={`Also on ${venueName(o.venue)}`} sub={pair.status === 'verified' ? 'Verified: a reviewer confirmed both venues ask the same question' : 'Suggested match · unverified'}>
       <a href={marketHref(o.id)} className="related-link">
         <VenueLiveBadge v={LIVE_VENUES[o.venue]} />
         <span className="grow related-name">{o.multi ? `${o.eventTitle}: ${o.label}` : o.eventTitle}{o.yes ? ` (Yes = ${o.yes})` : ''}</span>
         <span className="mono">{fmtCentsAuto(o.mid)}</span>
       </a>
-      <p className="muted small">Price gap here vs {venueName(o.venue)}: <span className="mono">{fmtPP(gap)}</span>. Before treating these as the same question, compare both venues’ rules.</p>
+      <p className="muted small">Price gap here vs {venueName(o.venue)}: <span className="mono">{fmtPP(gap)}</span>{pair.status === 'verified' ? ', before fees.' : '. Before treating these as the same question, compare both venues’ rules.'}</p>
       <Button size="sm" variant="secondary" icon="git-compare-arrows" href={compareHref(pair.id)}>Compare side by side</Button>
     </Panel>
   );

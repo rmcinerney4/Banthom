@@ -5,7 +5,7 @@ import { PriceChart } from '../charts/charts.jsx';
 import { fmtCentsAuto, fmtCents, fmtInt, fmtTime, fmtDateShort, fmtPP, cx, isNum } from '../lib/format.js';
 import { useMedia } from '../lib/hooks.js';
 import { LIVE, LIVE_LIST, LIVE_VENUES, usePolled, API2, compareHref, venueName, buildSeries } from '../data/live.js';
-import { rowName, volText } from '../terminal/kit.jsx';
+import { rowName, volText, PairBadge } from '../terminal/kit.jsx';
 
 const { useRef, useEffect, useState, useMemo } = React;
 
@@ -116,7 +116,7 @@ function HeroPreview({ ov, hero, hist, pair }) {
                     <p className="pv-text">{clip(rowName(pair.k), 72)}</p>
                     <div className="pv-mover pv-pair"><VenueBadge venue="kalshi" /><span className="pv-mover-name">Kalshi</span><span className="mono pv-mover-price">{fmtCentsAuto(pair.k.mid)}</span></div>
                     <div className="pv-mover pv-pair"><VenueBadge venue="polymarket" /><span className="pv-mover-name">Polymarket</span><span className="mono pv-mover-price">{fmtCentsAuto(pair.p.mid)}</span></div>
-                    <div className="pv-tags"><Badge tone="warning" size="sm" icon="circle-dashed">Suggested · unverified</Badge></div>
+                    <div className="pv-tags"><PairBadge status={pair.status} size="sm" /></div>
                   </>
                 ) : <Skeleton h={84} />}
               </div>
@@ -185,7 +185,7 @@ function PairCloseup({ pair }) {
       </div>
       <div className="cu-rules">
         <p className="cu-rules-meta">On Polymarket: “{clip(rowName(pair.p), 90)}”</p>
-        <span><Badge tone="warning" size="sm" icon="circle-dashed">Suggested · unverified</Badge></span>
+        <span><PairBadge status={pair.status} size="sm" /></span>
       </div>
     </div>
   );
@@ -278,20 +278,20 @@ function CompareModule({ pair }) {
       <div className="container split-60">
         <div className="split-text">
           <SectionHead id="compare-title" eyebrow="Cross-venue comparison" title="Compare venues without assuming the contracts match."
-            lead="Banthom suggests where Kalshi and Polymarket list the same question, by lining up titles, numbers, outcome names and closing dates. It then puts both venues’ rules side by side, because similar titles can settle differently." />
+            lead="Banthom suggests where Kalshi and Polymarket list the same question, by lining up titles, numbers, outcome names and closing dates. It then puts both venues’ rules side by side, because similar titles can settle differently. A reviewer marks the pairs that truly match as Verified." />
           <ul className="check-list">
-            <li><Icon n="circle-dashed" size={18} />Every pair is labelled suggested and unverified.</li>
+            <li><Icon n="badge-check" size={18} />Pairs are labelled Verified once a person has read both rule sets; the rest are marked suggested.</li>
             <li><Icon n="scroll-text" size={18} />Both venues’ rules, quoted in full on the comparison page.</li>
             <li><Icon n="calculator" size={18} />Price gaps are shown before fees. Read the rules before relying on one.</li>
           </ul>
           {pair && <Button variant="secondary" href={compareHref(pair.id)} iconRight="arrow-right">Open this comparison</Button>}
         </div>
-        <Inert className="compare-visual" label={pair ? `Live example: “${rowName(pair.k)}” on Kalshi at ${fmtCentsAuto(pair.k.mid)} and “${rowName(pair.p)}” on Polymarket at ${fmtCentsAuto(pair.p.mid)}, suggested as the same question and not verified.` : 'Example comparison loading.'}>
+        <Inert className="compare-visual" label={pair ? `Live example: “${rowName(pair.k)}” on Kalshi at ${fmtCentsAuto(pair.k.mid)} and “${rowName(pair.p)}” on Polymarket at ${fmtCentsAuto(pair.p.mid)}, ${pair.status === 'verified' ? 'verified as the same question' : 'suggested as the same question and not verified'}.` : 'Example comparison loading.'}>
           {pair ? (
             <>
               <div className="venue-pair">
                 {card(pair.k, data && data.kalshi)}
-                <div className="pair-link"><span className="pair-line" /><Badge tone="warning" size="sm" icon="circle-dashed">Suggested</Badge><span className="muted small">Title match {Math.round(pair.score * 100)}%</span><span className="pair-line" /></div>
+                <div className="pair-link"><span className="pair-line" /><PairBadge status={pair.status} size="sm" short />{pair.status !== 'verified' && <span className="muted small">Title match {Math.round(pair.score * 100)}%</span>}<span className="pair-line" /></div>
                 {card(pair.p, data && data.polymarket)}
               </div>
               <div className="term-diff">
