@@ -10,7 +10,7 @@ export const LIVE = !!(CFG && CFG.dataSources && CFG.dataSources.kalshi && CFG.k
 export const LIVE_CFG = (CFG && CFG.kalshi) || { refreshSeconds: 180, recentSeconds: 360, categories: [] };
 
 export const API = {
-  list: '/api/kalshi/markets',
+  list: (p) => `/api/kalshi/markets?${new URLSearchParams(p)}`,
   market: (t) => `/api/kalshi/markets/${encodeURIComponent(t)}`,
   book: (t) => `/api/kalshi/markets/${encodeURIComponent(t)}/orderbook`,
   history: (t, r) => `/api/kalshi/markets/${encodeURIComponent(t)}/history?range=${r}`,
@@ -36,7 +36,7 @@ async function getJSON(url, signal) {
 }
 
 // Fetch a URL and poll it. Keeps the last good data when a refresh fails.
-export function usePolled(url, intervalMs) {
+export function usePolled(url, intervalMs, { keep = false } = {}) {
   const [st, setSt] = useState({ url: null, data: null, error: null });
   const [nonce, setNonce] = useState(0);
   useEffect(() => {
@@ -59,7 +59,7 @@ export function usePolled(url, intervalMs) {
   }, [url, intervalMs, nonce]);
   const retry = useCallback(() => setNonce((n) => n + 1), []);
   const current = st.url === url;
-  return { data: current ? st.data : null, error: current ? st.error : null, loading: !current || (!st.data && !st.error), retry };
+  return { data: current || keep ? st.data : null, error: current ? st.error : null, loading: !current || (!st.data && !st.error), retry };
 }
 
 // One-second real clock (the demo screens use a simulated clock instead).

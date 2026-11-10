@@ -10,7 +10,6 @@ import { LIVE_CFG, API, usePolled, useRealNow, liveFreshness, midOf2, change24, 
 const { useState, useMemo, useEffect, useRef } = React;
 
 const minutes = (s) => pluralize(Math.round(s / 60), 'minute');
-const norm = (s) => String(s || '').toLowerCase().normalize('NFKD');
 
 // ---------------------------------------------------------------- Small pieces
 export function KalshiBadge({ full }) {
@@ -107,27 +106,19 @@ const COLS = [
   ['bid', 'Yes bid'], ['ask', 'Yes ask'], ['mid', 'Midpoint'], ['ch24', '24h'], ['vol24', 'Volume 24h'], ['oi', 'Open interest'], ['closes', 'Closes'],
 ];
 
-function sortLive(rows, { key, dir }) {
-  const m = dir === 'asc' ? 1 : -1;
-  return [...rows].sort((a, b) => {
-    const va = key === 'title' ? a.title : key === 'ch24abs' ? (isNum(a.ch24) ? Math.abs(a.ch24) : null) : a[key];
-    const vb = key === 'title' ? b.title : key === 'ch24abs' ? (isNum(b.ch24) ? Math.abs(b.ch24) : null) : b[key];
-    if (va == null && vb == null) return 0;
-    if (va == null) return 1;
-    if (vb == null) return -1;
-    return (typeof va === 'string' ? va.localeCompare(vb) : va - vb) * m;
-  });
-}
-
 export function LiveMarkets() {
   useTitle('Kalshi markets');
-  const { data, error, loading, retry } = usePolled(API.list, 60000);
   const now = useRealNow();
   const mobile = useMedia('(max-width: 767px)');
+  const [qInput, setQInput] = useState('');
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('all');
   const [sort, setSort] = useState({ key: 'vol24', dir: 'desc' });
   const [limit, setLimit] = useState(50);
+  useEffect(() => { const t = setTimeout(() => setQ(qInput.trim()), 250); return () => clearTimeout(t); }, [qInput]);
+  useEffect(() => { setLimit(50); }, [q, cat, sort]);
+  const url = API.list({ q, category: cat, sort: sort.key, dir: sort.dir, limit });
+  const { data, error, loading, retry } = usePolled(url, 60000, { keep: true });
 
   const rows = useMemo(() => (data ? data.markets.map((m) => {
     const ev = data.events[m.event] || {};
@@ -135,29 +126,18 @@ export function LiveMarkets() {
     return {
       id: m.ticker, m, title, label: m.label, category: ev.category || 'Other', multi: (ev.markets || 1) > 1,
       bid: m.bid, ask: m.ask, mid: midOf2(m.bid, m.ask), ch24: change24(m), vol24: m.vol24, oi: m.oi, closes: m.closes,
-      hay: norm(`${title} ${ev.sub || ''} ${m.label} ${m.ticker} ${m.event} ${ev.category || ''}`),
     };
   }) : []), [data]);
-  const cats = useMemo(() => {
-    const c = new Map();
-    for (const r of rows) c.set(r.category, (c.get(r.category) || 0) + 1);
-    return [...c.entries()].sort((a, b) => b[1] - a[1]);
-  }, [rows]);
-  const filtered = useMemo(() => {
-    const terms = norm(q).split(/\s+/).filter(Boolean);
-    return rows.filter((r) => (cat === 'all' || r.category === cat) && terms.every((t) => r.hay.includes(t)));
-  }, [rows, q, cat]);
-  const sorted = useMemo(() => sortLive(filtered, sort), [filtered, sort]);
-  useEffect(() => { setLimit(50); }, [q, cat, sort]);
-
   const status = data && data.status;
+  const cats = (data && data.categories) || [];
   const shownCols = mobile ? COLS.filter(([k]) => k === 'mid' || k === 'ch24') : COLS;
-  const catText = LIVE_CFG.categories.length ? LIVE_CFG.categories.join(', ').replace(/, ([^,]*)$/, ' and $1') : 'all categories';
+  const filtering = q !== '' || cat !== 'all';
+  const stale = loading && !!data;
 
   return (
     <div className="page-stack">
       <PageHeader title="Kalshi markets"
-        sub={`Live prices for open Kalshi markets in ${catText}. Sorted by 24-hour volume.`}
+        sub={`Live prices for every open Kalshi market${data ? ` (${fmtInt(data.total)})` : ''}. Sorted by 24-hour volume.`}
         meta={<><LiveTag /><KalshiBadge full />{status && <Fresh observedAt={status.lastSuccessAt} />}</>}
         actions={<Button variant="secondary" icon="external-link" href="https://kalshi.com" target="_blank" rel="noopener noreferrer">Kalshi.com</Button>} />
       {error && !data && (
@@ -168,27 +148,27 @@ export function LiveMarkets() {
         <div className="live-toolbar">
           <div className="input-wrap live-search">
             <Icon n="search" size={16} />
-            <input className="input" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search Kalshi markets" aria-label="Search Kalshi markets" />
+            <input className="input" type="search" value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder="Search Kalshi markets" aria-label="Search Kalshi markets" />
           </div>
           <label className="sr-only" htmlFor="live-cat">Category</label>
           <select id="live-cat" className="select live-cat" value={cat} onChange={(e) => setCat(e.target.value)}>
-            <option value="all">All categories{rows.length ? ` (${fmtInt(rows.length)})` : ''}</option>
+            <option value="all">All categories{data ? ` (${fmtInt(data.total)})` : ''}</option>
             {cats.map(([c, n]) => <option key={c} value={c}>{c} ({fmtInt(n)})</option>)}
           </select>
           <span className="muted small live-count" aria-live="polite">
-            {data ? `${fmtInt(filtered.length)} ${filtered.length === 1 ? 'market' : 'markets'}${data.total > data.shown ? ` · top ${fmtInt(data.shown)} of ${fmtInt(data.total)} by volume` : ''}` : ''}
+            {data ? `${fmtInt(data.matched)} ${data.matched === 1 ? 'market' : 'markets'}${stale ? ' · updating…' : ''}` : ''}
           </span>
         </div>
-        {loading && !data ? (
+        {!data && loading ? (
           <div className="live-skeleton">{[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} h={36} />)}</div>
-        ) : !rows.length ? (
-          <EmptyState title={status && isNum(status.lastPassAt) ? 'No open markets in these categories' : 'No Kalshi data yet'}>
-            {status && isNum(status.lastPassAt) ? 'Kalshi has no open markets in the categories Banthom tracks right now.' : 'Markets appear here after the first update from Kalshi.'}
+        ) : !data ? null : !rows.length && !filtering ? (
+          <EmptyState title={status && isNum(status.lastPassAt) ? 'No open markets' : 'No Kalshi data yet'}>
+            {status && isNum(status.lastPassAt) ? 'Kalshi has no open markets right now.' : 'Markets appear here after the first update from Kalshi.'}
           </EmptyState>
-        ) : !filtered.length ? (
-          <EmptyState title="No markets match" action={<Button variant="secondary" size="sm" onClick={() => { setQ(''); setCat('all'); }}>Clear search</Button>}>Try a shorter search or another category.</EmptyState>
+        ) : !rows.length ? (
+          <EmptyState title="No markets match" action={<Button variant="secondary" size="sm" onClick={() => { setQInput(''); setQ(''); setCat('all'); }}>Clear search</Button>}>Try a shorter search or another category.</EmptyState>
         ) : (
-          <div className="table-scroll">
+          <div className={cx('table-scroll', stale && 'is-stale')}>
             <table className="table live-table">
               <caption className="sr-only">Open Kalshi markets. Prices in US cents per contract.</caption>
               <thead>
@@ -199,7 +179,7 @@ export function LiveMarkets() {
                 </tr>
               </thead>
               <tbody>
-                {sorted.slice(0, limit).map((r) => (
+                {rows.map((r) => (
                   <tr key={r.id} tabIndex={0} aria-label={`${r.title}, ${r.label}`} onClick={() => go(`app-live-${r.id}`)}
                     onKeyDown={(e) => { if (e.target === e.currentTarget) rowKeyNav(e, () => go(`app-live-${r.id}`)); }}>
                     <td className="live-mkt">
@@ -223,13 +203,17 @@ export function LiveMarkets() {
             </table>
           </div>
         )}
-        {sorted.length > limit && (
-          <div className="live-more"><Button variant="secondary" size="sm" onClick={() => setLimit((n) => n + 50)}>Show 50 more</Button></div>
+        {data && data.matched > rows.length && (
+          <div className="live-more">
+            {limit < 500
+              ? <Button variant="secondary" size="sm" loading={stale} onClick={() => setLimit((n) => Math.min(500, n + 50))}>Show 50 more</Button>
+              : <span className="muted small">Showing the first 500. Narrow the search or pick a category to see others.</span>}
+          </div>
         )}
       </Panel>
       <p className="muted small live-note">
         Prices are in US cents per $1 contract. Midpoint and 24h change use the Yes bid and ask; a missing bid or ask is shown as —, never filled in.
-        Market list refreshes every {minutes(LIVE_CFG.refreshSeconds)}. Source: Kalshi public market data. Banthom doesn’t place orders.
+        Kalshi’s multi-leg combo markets aren’t included. Market list refreshes every {minutes(LIVE_CFG.refreshSeconds)}. Source: Kalshi public market data. Banthom doesn’t place orders.
       </p>
     </div>
   );

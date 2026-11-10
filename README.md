@@ -28,14 +28,16 @@ React 18.3.1 and IBM Plex load from public CDNs at runtime. Everything else is i
 
 Kalshi data is **on** (owner confirmed Kalshi's permission on Nov 9, 2026; keep the written
 authorization with the project). The terminal gets a **Kalshi live** section (`#app-live`): a list
-of open markets in Economics, Politics, Elections, World and Financials, and a page per market with
+of every open Kalshi market (Kalshi's multi-leg combo markets excepted), and a page per market with
 live quotes, price history, order book and Kalshi's rule text. All other screens still use the
 simulated demo data and say so.
 
 - `server/kalshi.mjs` polls Kalshi's public Trade API v2 (no API key needed) every 3 minutes and
-  fetches a market's quote, order book and candles on demand while its page is open.
+  fetches a market's quote, order book and candles on demand while its page is open. Search,
+  category filter, sorting and paging run on the server (`/api/kalshi/markets?q=&category=&sort=&dir=&limit=`),
+  because the full set is too large to send to a browser.
 - Prices are converted to cents; a missing bid or ask is shown as —, never filled in. Data older
-  than 2× the refresh interval is labelled Delayed.
+  than 2× the refresh interval plus 2 minutes (8 minutes by default) is labelled Delayed.
 - `config/data-sources.mjs` holds the switch. `KALSHI_ENABLED=false` turns Kalshi off.
 
 API: `/api/kalshi/markets`, `/api/kalshi/markets/:ticker`, `…/orderbook`, `…/history?range=1D|1W|1M|ALL`,

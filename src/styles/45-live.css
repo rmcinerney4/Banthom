@@ -25,3 +25,4 @@
   .live-mkt { min-width: 0; max-width: 170px; }
   .live-search { max-width: none; }
 }
+.table-scroll.is-stale { opacity: 0.6; transition: opacity 0.15s; }

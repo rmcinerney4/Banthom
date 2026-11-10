@@ -52,16 +52,21 @@ const json = (req, res, status, obj, extra = {}) => send(req, res, status, JSON.
   { 'cache-control': 'no-store', 'x-server-time': String(Date.now()), ...extra });
 
 // ---- Market list: one serialized body per collector pass, revalidated with an ETag.
-let listGz = { etag: null, buf: null };
-function sendList(req, res) {
-  const { body, etag } = kalshi.listBody();
+const listGz = new Map();
+function sendList(req, res, params) {
+  const { body, etag } = kalshi.listQuery(params);
   const extra = { 'cache-control': 'no-cache', etag, 'x-server-time': String(Date.now()) };
   if (req.headers['if-none-match'] === etag) {
     res.writeHead(304, { ...BASE_HEADERS, ...extra });
     return res.end();
   }
-  if (listGz.etag !== etag) listGz = { etag, buf: zlib.gzipSync(body) };
-  return send(req, res, 200, body, 'application/json; charset=utf-8', extra, listGz.buf);
+  let gz = listGz.get(etag);
+  if (!gz) {
+    gz = zlib.gzipSync(body);
+    if (listGz.size > 200) listGz.clear();
+    listGz.set(etag, gz);
+  }
+  return send(req, res, 200, body, 'application/json; charset=utf-8', extra, gz);
 }
 
 const TICKER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -78,7 +83,7 @@ async function route(req, res) {
   if (p === '/api/kalshi' || p.startsWith('/api/kalshi/')) {
     if (!KALSHI) return json(req, res, 503, { error: 'Kalshi data is switched off.' });
     if (p === '/api/kalshi/status') return json(req, res, 200, kalshi.status());
-    if (p === '/api/kalshi/markets') return sendList(req, res);
+    if (p === '/api/kalshi/markets') return sendList(req, res, url.searchParams);
     const m = p.match(/^\/api\/kalshi\/markets\/([^/]+)(?:\/(orderbook|history))?$/);
     if (m) {
       let ticker = '';

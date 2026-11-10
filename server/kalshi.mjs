@@ -15,9 +15,9 @@ const int = (v, d, lo, hi) => {
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d;
 };
 export const REFRESH_S = int(env.KALSHI_REFRESH_SECONDS, 180, 30, 3600);
-export const RECENT_S = 2 * REFRESH_S;
-const LIST_LIMIT = int(env.KALSHI_LIST_LIMIT, 4000, 100, 20000);
-const CATEGORIES = (env.KALSHI_CATEGORIES || 'Economics,Politics,Elections,World,Financials')
+// A full pass over every open Kalshi market can take a couple of minutes, so allow for it.
+export const RECENT_S = 2 * REFRESH_S + 120;
+const CATEGORIES = (env.KALSHI_CATEGORIES || 'all')
   .split(',').map((s) => s.trim()).filter(Boolean);
 const ALL = CATEGORIES.some((c) => c.toLowerCase() === 'all');
 const ALLOWED = new Set(CATEGORIES.map((c) => c.toLowerCase()));
@@ -52,7 +52,7 @@ function lane(spacingMs, concurrency) {
     if (!timer) pump();
   });
 }
-const background = lane(150, 1);
+const background = lane(100, 3);
 const interactive = lane(40, 4);
 
 export class HttpError extends Error {
@@ -169,6 +169,12 @@ function detailMarket(m, observedAt) {
 // The fields the market list needs (keeps the list payload small).
 const LIST_FIELDS = ['ticker', 'event', 'label', 'bid', 'ask', 'bidSize', 'askSize', 'last', 'prevBid', 'prevAsk', 'vol24', 'oi', 'closes', 'observedAt'];
 const compactOf = (d) => Object.fromEntries(LIST_FIELDS.map((k) => [k, d[k] ?? null]));
+const mid2 = (b, a) => (b != null && a != null ? (b + a) / 2 : null);
+const withDerived = (c) => {
+  const now = mid2(c.bid, c.ask);
+  const prev = mid2(c.prevBid, c.prevAsk);
+  return { ...c, mid: now, ch24: now != null && prev != null ? Math.round((now - prev) * 10) / 10 : null };
+};
 const byActivity = (a, b) => (b.vol24 ?? 0) - (a.vol24 ?? 0) || (b.oi ?? 0) - (a.oi ?? 0) || a.ticker.localeCompare(b.ticker);
 
 // ---------------------------------------------------------------- Collector
@@ -178,7 +184,6 @@ const state = {
   seriesAt: 0,
   events: new Map(),
   markets: new Map(),
-  details: new Map(),
   byEvent: new Map(),
   eventsSeen: 0,
   lastPassAt: null,
@@ -187,7 +192,7 @@ const state = {
   failedBatches: 0,
   consecutiveFailures: 0,
   lastError: null,
-  list: null,
+  index: null,
 };
 
 function noteError(err, phase) {
@@ -229,7 +234,6 @@ function carryOver(t, next) {
   next.byEvent.set(t, tickers);
   for (const m of tickers) {
     if (state.markets.has(m)) next.markets.set(m, state.markets.get(m));
-    if (state.details.has(m)) next.details.set(m, state.details.get(m));
   }
 }
 
@@ -240,7 +244,7 @@ async function runPass() {
   }
   const open = await listOpenEvents();
   const keep = open.filter(inScope);
-  const next = { events: new Map(), markets: new Map(), details: new Map(), byEvent: new Map() };
+  const next = { events: new Map(), markets: new Map(), byEvent: new Map() };
   let failed = 0;
   for (let i = 0; i < keep.length; i += BATCH) {
     const batch = keep.slice(i, i + BATCH);
@@ -252,9 +256,7 @@ async function runPass() {
         const tickers = [];
         for (const m of e.markets || []) {
           if (!ACTIVE.has(m.status)) continue;
-          const d = detailMarket(m, at);
-          next.details.set(m.ticker, d);
-          next.markets.set(m.ticker, compactOf(d));
+          next.markets.set(m.ticker, withDerived(compactOf(detailMarket(m, at))));
           tickers.push(m.ticker);
         }
         if (tickers.length) { next.events.set(ev.ticker, ev); next.byEvent.set(ev.ticker, tickers); }
@@ -266,7 +268,7 @@ async function runPass() {
     }
   }
   const done = Date.now();
-  Object.assign(state, next, { list: null, lastPassAt: done, lastPassMs: done - t0, eventsSeen: open.length, failedBatches: failed });
+  Object.assign(state, next, { index: null, lastPassAt: done, lastPassMs: done - t0, eventsSeen: open.length, failedBatches: failed });
   if (!failed) { state.lastSuccessAt = done; state.lastError = null; }
   console.log(`[kalshi] ${next.markets.size} markets in ${next.events.size} events (${keep.length} of ${open.length} open events in scope) in ${((done - t0) / 1000).toFixed(1)}s${failed ? `; ${failed} batch(es) failed` : ''}`);
 }
@@ -284,7 +286,7 @@ export function start() {
         state.consecutiveFailures = 0;
       } catch (err) {
         state.consecutiveFailures++;
-        state.list = null;
+        state.index = null;
         noteError(err, 'events');
       }
       const wait = state.consecutiveFailures
@@ -317,20 +319,75 @@ export function status() {
   };
 }
 
-// Serialized once per collector pass; the ETag lets browsers revalidate cheaply.
-export function listBody() {
-  if (state.list) return state.list;
-  const all = [...state.markets.values()].sort(byActivity);
-  const shown = all.slice(0, LIST_LIMIT);
-  const events = {};
-  for (const m of shown) {
-    if (events[m.event]) continue;
+// Search, filter, sort and page on the server: the full set is too big to send to browsers.
+// The index is rebuilt once per collector pass; query results are cached until the next pass.
+function index() {
+  if (state.index) return state.index;
+  const rows = [];
+  const cats = new Map();
+  for (const m of state.markets.values()) {
     const e = state.events.get(m.event);
-    if (e) events[m.event] = { title: e.title, sub: e.sub, category: e.category, series: e.series, exclusive: e.exclusive, markets: (state.byEvent.get(m.event) || []).length };
+    const category = (e && e.category) || 'Other';
+    cats.set(category, (cats.get(category) || 0) + 1);
+    const title = e ? e.title : m.event;
+    rows.push({ m, category, title, sortTitle: `${title} ${m.label}`.toLowerCase(),
+      hay: `${title} ${e ? e.sub : ''} ${m.label} ${m.ticker} ${m.event} ${category}`.toLowerCase() });
   }
-  const body = JSON.stringify({ status: status(), total: all.length, shown: shown.length, events, markets: shown });
-  state.list = { body, etag: `"k${state.lastPassAt || 0}-${state.consecutiveFailures}-${shown.length}"` };
-  return state.list;
+  rows.sort((a, b) => byActivity(a.m, b.m));
+  state.index = {
+    rows,
+    categories: [...cats.entries()].sort((a, b) => b[1] - a[1]),
+    version: `${state.lastPassAt || 0}-${state.consecutiveFailures}`,
+    results: new Map(),
+  };
+  return state.index;
+}
+
+const SORTS = new Set(['title', 'bid', 'ask', 'mid', 'ch24', 'vol24', 'oi', 'closes']);
+const clean = (m) => { const { mid, ch24, ...rest } = m; return rest; };
+
+export function listQuery(params) {
+  const idx = index();
+  const q = String(params.get('q') || '').trim().toLowerCase().slice(0, 120);
+  const category = String(params.get('category') || 'all');
+  const sort = SORTS.has(params.get('sort')) ? params.get('sort') : 'vol24';
+  const dir = params.get('dir') === 'asc' ? 'asc' : 'desc';
+  const offset = int(params.get('offset'), 0, 0, 1e7);
+  const limit = int(params.get('limit'), 50, 1, 500);
+  const key = JSON.stringify([q, category, sort, dir, offset, limit]);
+  const etag = `"k${idx.version}-${Buffer.from(key).toString('base64url').slice(0, 60)}"`;
+  const hit = idx.results.get(key);
+  if (hit) return { body: hit, etag };
+
+  const terms = q.split(/\s+/).filter(Boolean);
+  let rows = idx.rows.filter((r) => (category === 'all' || r.category === category) && terms.every((t) => r.hay.includes(t)));
+  if (sort !== 'vol24' || dir !== 'desc') {
+    const k = sort;
+    const mul = dir === 'asc' ? 1 : -1;
+    const val = (r) => (k === 'title' ? r.sortTitle : r.m[k]);
+    rows = [...rows].sort((a, b) => {
+      const va = val(a);
+      const vb = val(b);
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      return (typeof va === 'string' ? va.localeCompare(vb) : va - vb) * mul;
+    });
+  }
+  const page = rows.slice(offset, offset + limit);
+  const events = {};
+  for (const r of page) {
+    if (events[r.m.event]) continue;
+    const e = state.events.get(r.m.event);
+    if (e) events[r.m.event] = { title: e.title, sub: e.sub, category: e.category, series: e.series, exclusive: e.exclusive, markets: (state.byEvent.get(r.m.event) || []).length };
+  }
+  const body = JSON.stringify({
+    status: status(), total: idx.rows.length, matched: rows.length, offset, limit,
+    categories: idx.categories, events, markets: page.map((r) => clean(r.m)),
+  });
+  if (idx.results.size > 200) idx.results.clear();
+  idx.results.set(key, body);
+  return { body, etag };
 }
 
 // ---------------------------------------------------------------- On-demand detail
@@ -389,7 +446,7 @@ export async function marketDetail(ticker) {
     market,
     event,
     series: series && { ticker: series.ticker, title: series.title, category: series.category, frequency: series.frequency, termsUrl: series.termsUrl, contractUrl: series.contractUrl },
-    siblings: siblings.filter((m) => m.ticker !== ticker).sort(byActivity).slice(0, 60),
+    siblings: siblings.filter((m) => m.ticker !== ticker).sort(byActivity).slice(0, 60).map(clean),
   };
 }
 
