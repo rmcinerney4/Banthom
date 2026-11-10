@@ -33,8 +33,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // ---------------------------------------------------------------- Requests
 // Two lanes keep Banthom well under Kalshi's basic read budget (about 20 requests a second):
 // the collector runs one request at a time, page views get their own small lane.
-// Kalshi answers bursts of public requests with 429, so every lane slows to a quarter of its
-// pace for a minute after any 429 (and honours Retry-After when Kalshi sends it).
+// Kalshi answers faster public request rates with 429. The collector runs one request at a time
+// (about 4 a second, which Kalshi accepted without any 429s in production), and every lane halves
+// its pace for 30 seconds after a 429 (honouring Retry-After when Kalshi sends it).
 let slowUntil = 0;
 function lane(spacingMs, concurrency) {
   let active = 0;
@@ -44,7 +45,7 @@ function lane(spacingMs, concurrency) {
   const pump = () => {
     timer = null;
     while (active < concurrency && queue.length) {
-      const wait = last + (Date.now() < slowUntil ? spacingMs * 4 : spacingMs) - Date.now();
+      const wait = last + (Date.now() < slowUntil ? spacingMs * 2 : spacingMs) - Date.now();
       if (wait > 0) { timer = setTimeout(pump, wait); return; }
       last = Date.now();
       const job = queue.shift();
@@ -57,7 +58,7 @@ function lane(spacingMs, concurrency) {
     if (!timer) pump();
   });
 }
-const background = lane(200, 2);
+const background = lane(150, 1);
 const interactive = lane(60, 3);
 
 export class HttpError extends Error {
@@ -80,7 +81,7 @@ async function getJSON(path, params, run = background) {
             if (res.status === 429) {
               const ra = Number(res.headers.get('retry-after'));
               err.retryAfter = Number.isFinite(ra) && ra > 0 ? Math.min(ra, 60) * 1000 : 0;
-              slowUntil = Date.now() + 60000;
+              slowUntil = Date.now() + 30000;
             }
             throw err;
           }
@@ -238,7 +239,7 @@ async function listOpenEvents() {
   return out;
 }
 
-// Updates the snapshot in place (no second copy during a pass), two requests at a time.
+// Updates the snapshot in place (no second copy during a pass).
 async function runPass() {
   const t0 = Date.now();
   if (!state.series.size || t0 - state.seriesAt > SERIES_TTL) {
@@ -284,7 +285,7 @@ async function runPass() {
       }
     }
   };
-  await Promise.all([worker(), worker()]);
+  await worker();
   // Drop markets and events that are no longer open. Ones from failed batches are kept and age into Delayed.
   for (const [t, m] of state.markets) if (!seen.has(t) && !failedEvents.has(m.event)) state.markets.delete(t);
   for (const t of [...state.events.keys()]) {
