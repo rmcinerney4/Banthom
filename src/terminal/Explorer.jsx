@@ -4,7 +4,7 @@ import { Icon, Button, Panel, PageHeader, EmptyState, Segmented, Skeleton, Venue
 import { useStore } from '../store.jsx';
 import { fmtInt } from '../lib/format.js';
 import { usePolled, API2, LIVE_VENUES, VENUE_KEYS, venueName } from '../data/live.js';
-import { useTitle, MarketList, FeedBanners, Fresh, useSorted } from './kit.jsx';
+import { useTitle, MarketList, FeedBanners, Fresh, useSorted, SportsTabs } from './kit.jsx';
 
 const { useState, useEffect, useMemo } = React;
 
@@ -19,7 +19,8 @@ const WITHIN = [['any', 'Any time'], ['1', 'Within 1 day'], ['7', 'Within 7 days
 const COLS = ['venue', 'bid', 'ask', 'mid', 'ch24', 'vol24', 'closes', 'age'];
 const serverSort = (k) => (k === 'vol24' ? 'usd24' : k);
 
-export function Explorer({ category, venue: venueRoute, viewRequest }) {
+export function Explorer({ category, venue: venueRoute, viewRequest, scope = 'main' }) {
+  const sports = scope === 'sports';
   const { watchlists } = useStore();
   const [qInput, setQInput] = useState('');
   const [q, setQ] = useState('');
@@ -46,6 +47,7 @@ export function Explorer({ category, venue: venueRoute, viewRequest }) {
   useEffect(() => { if (viewRequest && viewRequest.view) choosePreset(viewRequest.view); }, [viewRequest]);
 
   const url = watch ? null : API2.markets({
+    scope,
     venue, q, category: cat, sort: serverSort(sort.key), dir: sort.dir, limit,
     closing: within === 'any' ? null : within, minUsd: p.minUsd, band: p.band,
   });
@@ -56,7 +58,7 @@ export function Explorer({ category, venue: venueRoute, viewRequest }) {
   const { data: wq } = usePolled(watch ? API2.quotes(ids) : null, 30000);
   const watchRows = useMemo(() => {
     const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
-    return (wq && wq.quotes ? wq.quotes : []).filter((r) => !r.missing
+    return (wq && wq.quotes ? wq.quotes : []).filter((r) => !r.missing && (r.category === 'Sports') === sports
       && (venue === 'all' || r.venue === venue)
       && (cat === 'all' || r.category.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '-') === cat)
       && terms.every((t) => `${r.eventTitle} ${r.label} ${r.ticker}`.toLowerCase().includes(t)));
@@ -67,27 +69,28 @@ export function Explorer({ category, venue: venueRoute, viewRequest }) {
   const cats = (data && data.categories) || [];
   const catLabel = cats.find((c) => c.slug === cat);
   const stale = loading && !!data && !watch;
-  const title = catLabel ? catLabel.label : venue !== 'all' ? `${venueName(venue)} markets` : 'Markets';
+  const title = sports ? (venue !== 'all' ? `${venueName(venue)} sports markets` : 'Sports markets') : catLabel ? catLabel.label : venue !== 'all' ? `${venueName(venue)} markets` : 'Markets';
   useTitle(title);
   const status = data && data.status;
 
   return (
     <div className="page-stack">
       <PageHeader title={title}
-        sub={`Every open market on ${venue === 'all' ? 'Kalshi and Polymarket' : venueName(venue)}${data ? ` · ${fmtInt(data.total)} in total` : ''}. Prices in cents for the Yes side.`}
+        sub={`Every open ${sports ? 'sports ' : ''}market on ${venue === 'all' ? 'Kalshi and Polymarket' : venueName(venue)}${data ? ` · ${fmtInt(data.total)} in total` : ''}. Prices in cents for the Yes side.${sports ? '' : ' Sports are in Banthom Sports.'}`}
         meta={status ? <>{VENUE_KEYS.filter((k) => status[k] && (venue === 'all' || venue === k)).map((k) => <span key={k} className="row-tight"><VenueBadge venue={k} /><Fresh venue={k} at={status[k].lastSuccessAt} variant="badge" /></span>)}</> : null} />
       {error && !data && !watch && <EmptyState title="Couldn’t load markets." action={<Button variant="secondary" icon="refresh-cw" onClick={retry}>Try again</Button>}>{error.message}</EmptyState>}
       {status && <FeedBanners status={status} />}
+      {sports && <SportsTabs active="markets" />}
       <Panel flush className="live-table-panel">
         <div className="live-toolbar">
           <div className="input-wrap live-search">
             <Icon n="search" size={16} />
-            <input className="input" type="search" value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder="Search markets, events, tickers" aria-label="Search markets" />
+            <input className="input" type="search" value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder={sports ? 'Search teams, leagues, players' : 'Search markets, events, tickers'} aria-label="Search markets" />
           </div>
           <Segmented label="Venue" value={venue} onChange={setVenue}
             options={[{ id: 'all', label: 'All' }, ...VENUE_KEYS.filter((k) => LIVE_VENUES[k].enabled).map((k) => ({ id: k, label: venueName(k) }))]} />
           <label className="sr-only" htmlFor="xp-cat">Category</label>
-          <select id="xp-cat" className="select live-cat" value={cat} onChange={(e) => setCat(e.target.value)}>
+          <select id="xp-cat" className="select live-cat" value={cat} onChange={(e) => setCat(e.target.value)} hidden={sports}>
             <option value="all">All categories</option>
             {cats.map((c) => <option key={c.slug} value={c.slug}>{c.label} ({fmtInt(venue === 'all' ? c.total : c[venue] || 0)})</option>)}
           </select>

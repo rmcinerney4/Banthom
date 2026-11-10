@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 // Cross-venue market layer: one market list, events, quotes and an overview, read straight from
 // each venue's in-memory snapshot (no copies). Queries keep only the top rows they return, and
 // results are cached until either venue (or the pair finder) publishes new data.
@@ -150,8 +151,13 @@ const num = (v) => {
   return Number.isFinite(n) ? n : null;
 };
 
+// Banthom Sports is its own section: scope "sports" is only sports markets, "main" is everything else, none is both.
+const SPORTS = 'Sports';
+export const scopeOf = (v) => (v === 'sports' || v === 'main' ? v : null);
+const inScope = (scope, cat) => !scope || (scope === 'sports') === (cat === SPORTS);
+
 // Runs one filtered, sorted selection across venues. Returns { matched, items: [{venue, m, s}] }.
-function select({ venues, q, category, closingDays, minUsd, midBand, sort, dir, k, requireCh24 }) {
+function select({ venues, q, category, closingDays, minUsd, midBand, sort, dir, k, requireCh24, scope }) {
   const terms = q ? q.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 8) : [];
   const now = Date.now();
   const sortKey = SORTS[sort] ? sort : sort === 'title' ? 'title' : 'usd24';
@@ -161,6 +167,7 @@ function select({ venues, q, category, closingDays, minUsd, midBand, sort, dir, 
     const s = snap(vn);
     for (const m of s.markets.values()) {
       const e = s.events.get(m.event);
+      if (scope && !inScope(scope, categoryOf(e))) continue;
       if (category && slugOf(categoryOf(e)) !== category) continue;
       if (closingDays != null && !(m.closes != null && m.closes >= now && m.closes - now <= closingDays * DAY)) continue;
       if (minUsd != null) { const u = usd24(vn, m); if (u == null || u < minUsd) continue; }
@@ -199,7 +206,8 @@ function categories() {
   return c.categories;
 }
 
-const etagFor = (tag, key) => `"${tag}${version()}-${Buffer.from(key).toString('base64url').slice(0, 80)}"`;
+// The tag must differ for every distinct query (it also keys the gzip cache), so hash the whole key.
+const etagFor = (tag, key) => `"${tag}${version()}-${crypto.createHash('sha1').update(key).digest('base64url')}"`;
 
 // ---------------------------------------------------------------- /api/markets
 export function marketsQuery(params) {
@@ -215,21 +223,23 @@ export function marketsQuery(params) {
   const closingDays = num(params.get('closing'));
   const minUsd = num(params.get('minUsd'));
   const band = params.get('band') === '1' ? [2, 98] : null;
-  const key = JSON.stringify([venues, q.toLowerCase(), category, sort, dir, offset, limit, closingDays, minUsd, band]);
+  const scope = scopeOf(params.get('scope'));
+  const key = JSON.stringify([venues, q.toLowerCase(), category, sort, dir, offset, limit, closingDays, minUsd, band, scope]);
   const etag = etagFor('m', key);
   let body = c.results.get(key);
   if (!body) {
-    const { matched, items } = select({ venues, q, category, closingDays, minUsd, midBand: band, sort, dir, k: offset + limit, requireCh24: sort.startsWith('ch24') });
+    const { matched, items } = select({ venues, q, category, closingDays, minUsd, midBand: band, sort, dir, k: offset + limit, requireCh24: sort.startsWith('ch24'), scope });
     const rows = items.slice(offset).map((x) => rowOf(x.vn, x.m, x.s));
-    body = JSON.stringify({ version: c.version, status: venueStatus(), total: totalMarkets(venues), matched, offset, limit, categories: categories(), markets: rows });
+    body = JSON.stringify({ version: c.version, status: venueStatus(), total: totalMarkets(venues, scope), matched, offset, limit, categories: categories().filter((x) => inScope(scope, x.label)), markets: rows });
     if (c.results.size > 300) c.results.clear();
     c.results.set(key, body);
   }
   return { body, etag };
 }
 
-function totalMarkets(venues = enabled()) {
-  return venues.reduce((n, k) => n + snap(k).markets.size, 0);
+function totalMarkets(venues = enabled(), scope = null) {
+  if (!scope) return venues.reduce((n, k) => n + snap(k).markets.size, 0);
+  return categories().filter((x) => inScope(scope, x.label)).reduce((n, x) => n + venues.reduce((a, k) => a + (x[k] || 0), 0), 0);
 }
 
 // ---------------------------------------------------------------- /api/quotes
@@ -239,25 +249,27 @@ export function quotes(params) {
 }
 
 // ---------------------------------------------------------------- /api/overview
-export function overview() {
+export function overview(scope = null) {
   const c = fresh();
-  if (c.overview) return c.overview;
+  if (!c.overview) c.overview = {};
+  const slot = scope || 'all';
+  if (c.overview[slot]) return c.overview[slot];
   const venues = enabled();
-  const pick = (opts, k = 10) => select({ venues, sort: 'usd24', dir: 'desc', k, ...opts }).items.map((x) => rowOf(x.vn, x.m, x.s));
-  const counts = Object.fromEntries(venues.map((k) => [k, { markets: snap(k).markets.size, events: snap(k).events.size }]));
-  c.overview = JSON.stringify({
+  const pick = (opts, k = 10) => select({ venues, sort: 'usd24', dir: 'desc', k, scope, ...opts }).items.map((x) => rowOf(x.vn, x.m, x.s));
+  const counts = Object.fromEntries(venues.map((k) => [k, { markets: totalMarkets([k], scope) }]));
+  c.overview[slot] = JSON.stringify({
     version: c.version,
     status: venueStatus(),
     counts,
-    total: totalMarkets(venues),
-    categories: categories(),
+    total: totalMarkets(venues, scope),
+    categories: categories().filter((x) => inScope(scope, x.label)),
     active: pick({}),
     movers: pick({ sort: 'ch24abs', minUsd: 1000, midBand: [3, 97], requireCh24: true }),
     closing: pick({ sort: 'closes', dir: 'asc', closingDays: 7, minUsd: 1000 }),
-    pairs: matcher ? matchesList(new URLSearchParams('sort=activity&limit=6')).pairs : [],
+    pairs: matcher ? matchesList(new URLSearchParams(`sort=activity&limit=6${scope ? `&scope=${scope}` : ''}`)).pairs : [],
     pairStatus: matcher ? matcher.status() : null,
   });
-  return c.overview;
+  return c.overview[slot];
 }
 
 // ---------------------------------------------------------------- /api/events/:venue/:id
@@ -298,11 +310,13 @@ export function matchesList(params) {
   const limit = int(params.get('limit'), 50, 1, 500);
   const offset = int(params.get('offset'), 0, 0, 5000);
   const only = ['verified', 'suggested'].includes(params.get('status')) ? params.get('status') : null;
-  const key = JSON.stringify([q, sort, limit, offset, only]);
+  const scope = scopeOf(params.get('scope'));
+  const key = JSON.stringify([q, sort, limit, offset, only, scope]);
   let res = c.matches.get(key);
   if (!res) {
     const terms = q.split(/\s+/).filter(Boolean);
     let rows = (matcher ? matcher.pairs() : []).map(pairRow).filter(Boolean);
+    if (scope) rows = rows.filter((r) => (scope === 'sports') === (r.k.category === SPORTS || r.p.category === SPORTS));
     const counts = { verified: rows.filter((r) => r.status === 'verified').length, suggested: rows.filter((r) => r.status !== 'verified').length };
     if (only) rows = rows.filter((r) => r.status === only);
     if (terms.length) {

@@ -29,6 +29,16 @@ export const rowName = (r) => {
   return r.yes ? `${base} (Yes = ${r.yes})` : base;
 };
 
+// Section tabs shown on every Banthom Sports page.
+export function SportsTabs({ active }) {
+  const tabs = [['overview', 'Overview', '#app-sports'], ['markets', 'Markets', '#app-sports-markets'], ['compare', 'Compare', '#app-sports-compare']];
+  return (
+    <nav className="sports-tabs" aria-label="Banthom Sports">
+      {tabs.map(([id, label, href]) => <a key={id} href={href} className={cx('sports-tab', active === id && 'is-active')} aria-current={active === id ? 'page' : undefined}>{label}</a>)}
+    </nav>
+  );
+}
+
 // Pair status: verified by a person who read both venues' rules, or suggested by title matching.
 export function PairBadge({ status, size, short }) {
   return status === 'verified'

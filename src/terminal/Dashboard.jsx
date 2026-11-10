@@ -4,7 +4,7 @@ import { Icon, Button, Badge, Panel, PageHeader, EmptyState, VenueBadge, Delta, 
 import { useStore } from '../store.jsx';
 import { fmtCentsAuto, fmtPP, fmtTimeSec, fmtDateShort, fmtTime, fmtUntil, fmtInt, cx, pluralize, isNum } from '../lib/format.js';
 import { usePolled, useRealNow, API2, marketHref, compareHref, venueName, VENUE_KEYS, CATEGORY_ICON } from '../data/live.js';
-import { useTitle, MetricTile, MarketList, FeedBanners, Fresh, useSorted } from './kit.jsx';
+import { useTitle, MetricTile, MarketList, FeedBanners, Fresh, useSorted, SportsTabs } from './kit.jsx';
 
 const { useState } = React;
 
@@ -31,19 +31,21 @@ function CompactTable({ rows, label, value }) {
   );
 }
 
-export function Dashboard() {
-  useTitle('Overview');
+export function Dashboard({ scope = 'main' }) {
+  const sports = scope === 'sports';
+  const mk = sports ? '#app-sports-markets' : '#app-markets';
+  useTitle(sports ? 'Banthom Sports' : 'Overview');
   const { prefs, setPref, watchlists, history, unread } = useStore();
   const now = useRealNow();
   const [customize, setCustomize] = useState(false);
   const hidden = prefs.hiddenPanels || [];
   const show = (id) => !hidden.includes(id);
-  const { data: ov, error, loading, retry } = usePolled(API2.overview, 60000);
+  const { data: ov, error, loading, retry } = usePolled(API2.overviewFor(scope), 60000);
   const my = watchlists.find((w) => w.id === 'my-markets') || watchlists[0];
   const watchedIds = my ? my.items.map((i) => i.id) : [];
-  const empty = watchedIds.length === 0;
+  const empty = watchedIds.length === 0 || (!!wq && watchedRows.length === 0);
   const { data: wq } = usePolled(API2.quotes(watchedIds), 30000);
-  const watchedRows = (wq && wq.quotes ? wq.quotes : []).filter((q) => !q.missing);
+  const watchedRows = (wq && wq.quotes ? wq.quotes : []).filter((q) => !q.missing && (q.category === 'Sports') === sports);
   const [sort, setSort] = useState({ key: 'ch24abs', dir: 'desc' });
   const radarRows = useSorted(empty ? (ov ? ov.active : []) : watchedRows, empty ? { key: 'vol24', dir: 'desc' } : sort);
   const topMover = !empty ? [...watchedRows].filter((r) => isNum(r.ch24)).sort((a, b) => Math.abs(b.ch24) - Math.abs(a.ch24))[0] : null;
@@ -53,18 +55,19 @@ export function Dashboard() {
 
   return (
     <div className="page-stack">
-      <PageHeader title="Overview" sub="Live prediction-market prices from Kalshi and Polymarket"
+      <PageHeader title={sports ? 'Banthom Sports' : 'Overview'} sub={sports ? 'Live sports markets from Kalshi and Polymarket: games, futures and props' : 'Live prediction-market prices from Kalshi and Polymarket. Sports have their own section.'}
         meta={<>{ov && VENUE_KEYS.filter((k) => ov.status[k]).map((k) => <span key={k} className="row-tight"><VenueBadge venue={k} /><Fresh venue={k} at={ov.status[k].lastSuccessAt} variant="badge" /></span>)}</>}
         actions={<Button variant="secondary" icon="layout-template" onClick={() => setCustomize(true)}>Customize</Button>} />
+      {sports && <SportsTabs active="overview" />}
       {error && !ov && <EmptyState title="Couldn’t load live data." action={<Button variant="secondary" icon="refresh-cw" onClick={retry}>Try again</Button>}>{error.message}</EmptyState>}
       {ov && <FeedBanners status={ov.status} />}
       <div className="grid dash-grid">
         <div className="s-3 keep-6 m-order-2">
-          <MetricTile label="Open markets tracked" value={ov ? fmtInt(ov.total) : '—'}
-            sub={ov ? VENUE_KEYS.filter((k) => counts[k]).map((k) => `${fmtInt(counts[k].markets)} ${venueName(k)}`).join(' · ') : 'Loading…'} href="#app-markets" linkLabel="Browse markets" />
+          <MetricTile label={sports ? 'Open sports markets' : 'Open markets tracked'} value={ov ? fmtInt(ov.total) : '—'}
+            sub={ov ? VENUE_KEYS.filter((k) => counts[k]).map((k) => `${fmtInt(counts[k].markets)} ${venueName(k)}`).join(' · ') : 'Loading…'} href={mk} linkLabel={sports ? 'Browse sports markets' : 'Browse markets'} />
         </div>
         <div className="s-3 keep-6 m-order-2">
-          <MetricTile label="Watched markets" value={watchedIds.length} sub={empty ? 'Star a market to follow it here.' : `${my.name}`} href="#app-watchlists" linkLabel="Open watchlists" />
+          <MetricTile label={sports ? 'Watched sports markets' : 'Watched markets'} value={wq ? watchedRows.length : watchedIds.length} sub={empty ? 'Star a market to follow it here.' : `${my.name}`} href="#app-watchlists" linkLabel="Open watchlists" />
         </div>
         <div className="s-3 keep-6 m-order-3">
           <MetricTile label="Biggest watched mover · 24h" value={topMover ? fmtPP(topMover.ch24) : '—'}
@@ -77,9 +80,9 @@ export function Dashboard() {
 
         {show('radar') && (
           <Panel title={empty ? 'Most active right now' : 'Markets on your radar'}
-            sub={empty ? 'Highest 24-hour volume across both venues. Star any market to build your watchlist.' : `${my.name} · ${pluralize(watchedIds.length, 'market')}`}
+            sub={empty ? 'Highest 24-hour volume across both venues. Star any market to build your watchlist.' : `${my.name} · ${pluralize(watchedRows.length, 'market')}`}
             className="s-8 md-12 table-panel m-order-2 radar-panel" flush
-            actions={<Button size="sm" variant="ghost" href={empty ? '#app-markets' : '#app-watchlists'} iconRight="arrow-right">{empty ? 'All markets' : 'Watchlists'}</Button>}>
+            actions={<Button size="sm" variant="ghost" href={empty ? mk : '#app-watchlists'} iconRight="arrow-right">{empty ? 'All markets' : 'Watchlists'}</Button>}>
             {!ov && loading && empty ? <div className="live-skeleton">{[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} h={36} />)}</div>
               : <MarketList rows={radarRows.slice(0, 12)} cols={['venue', 'bid', 'ask', 'ch24', 'vol24', 'age']} sort={empty ? undefined : sort} setSort={empty ? undefined : setSort}
                 caption={empty ? 'Most active markets' : 'Markets on your radar'} />}
@@ -107,7 +110,7 @@ export function Dashboard() {
               ) : <EmptyState compact title="Nothing closing this week">No active market with meaningful volume closes in the next 7 days.</EmptyState>}
             </Panel>
           )}
-          {show('categories') && ov && (
+          {show('categories') && ov && !sports && (
             <Panel title="Categories" sub="Open markets by topic, both venues">
               <ul className="cat-list">
                 {ov.categories.slice(0, 10).map((c) => (
@@ -126,7 +129,7 @@ export function Dashboard() {
 
         {show('movers') && (
           <Panel title="Largest moves" sub="24 hours · markets with at least $1,000 traded" className="s-7 table-panel m-order-4" flush
-            actions={<Button size="sm" variant="ghost" href="#app-markets" iconRight="arrow-right">Markets</Button>}>
+            actions={<Button size="sm" variant="ghost" href={mk} iconRight="arrow-right">Markets</Button>}>
             {!ov ? <div className="live-skeleton"><Skeleton h={200} /></div> : ov.movers.length
               ? <CompactTable rows={ov.movers.slice(0, 8)} label="Markets with the largest 24-hour change" />
               : <EmptyState compact title="No large moves yet">Moves appear once both venues report 24-hour changes.</EmptyState>}
@@ -134,7 +137,7 @@ export function Dashboard() {
         )}
         {show('pairs') && (
           <Panel title="Same question, two venues" sub="Most active Kalshi–Polymarket pairs" className="s-5 m-order-5"
-            actions={<Button size="sm" variant="ghost" href="#app-compare" iconRight="arrow-right">Compare</Button>}>
+            actions={<Button size="sm" variant="ghost" href={sports ? '#app-sports-compare' : '#app-compare'} iconRight="arrow-right">Compare</Button>}>
             {!ov ? <Skeleton h={160} /> : ov.pairs && ov.pairs.length ? (
               <ul className="related">
                 {ov.pairs.slice(0, 5).map((p) => (

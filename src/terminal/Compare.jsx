@@ -5,7 +5,7 @@ import { PriceChart } from '../charts/charts.jsx';
 import { useMedia, go } from '../lib/hooks.js';
 import { fmtCentsAuto, fmtCents, fmtDate, fmtDateShort, fmtDateTimeShort, fmtTimeSec, fmtInt, fmtPP, isNum } from '../lib/format.js';
 import { usePolled, API2, LIVE_VENUES, marketHref, compareHref, buildSeries } from '../data/live.js';
-import { useTitle, SortHeader, rowKeyNav, FeedBanners, Fresh, StarButton, volText, usePageCrumbs, PairBadge } from './kit.jsx';
+import { useTitle, SortHeader, rowKeyNav, FeedBanners, Fresh, StarButton, volText, usePageCrumbs, PairBadge, SportsTabs } from './kit.jsx';
 
 const { useState, useEffect, useMemo } = React;
 
@@ -27,8 +27,9 @@ function Caveat({ status }) {
   );
 }
 
-export function CompareList() {
-  useTitle('Compare');
+export function CompareList({ scope = 'main' }) {
+  const sports = scope === 'sports';
+  useTitle(sports ? 'Sports pairs' : 'Compare');
   const mobile = useMedia('(max-width: 767px)');
   const [qInput, setQInput] = useState('');
   const [q, setQ] = useState('');
@@ -37,14 +38,15 @@ export function CompareList() {
   const [only, setOnly] = useState('all');
   useEffect(() => { const t = setTimeout(() => setQ(qInput.trim()), 250); return () => clearTimeout(t); }, [qInput]);
   useEffect(() => { setLimit(50); }, [q, sort, only]);
-  const { data, error, loading, retry } = usePolled(API2.matches({ q, sort: sort.key, limit, status: only === 'all' ? null : only }), 60000, { keep: true });
+  const { data, error, loading, retry } = usePolled(API2.matches({ q, sort: sort.key, limit, scope, status: only === 'all' ? null : only }), 60000, { keep: true });
   const counts = data && data.counts;
   const ps = data && data.pairStatus;
   const rows = data ? data.pairs : [];
   return (
     <div className="page-stack">
-      <PageHeader title="Compare" sub="The same question on Kalshi and Polymarket, side by side"
+      <PageHeader title={sports ? 'Sports pairs' : 'Compare'} sub={sports ? 'The same game or future on Kalshi and Polymarket, side by side' : 'The same question on Kalshi and Polymarket, side by side. Sports pairs are in Banthom Sports.'}
         meta={ps && ps.builtAt ? <span className="muted small"><Icon n="clock" size={13} /> Pairs updated {fmtTimeSec(ps.builtAt)} · {counts ? `${fmtInt(counts.verified)} verified · ${fmtInt(counts.suggested)} suggested` : `${fmtInt(ps.pairs)} pairs`}</span> : null} />
+      {sports && <SportsTabs active="compare" />}
       <Caveat />
       {error && !data && <EmptyState title="Couldn’t load pairs." action={<Button variant="secondary" icon="refresh-cw" onClick={retry}>Try again</Button>}>{error.message}</EmptyState>}
       {data && <FeedBanners status={data.status} />}

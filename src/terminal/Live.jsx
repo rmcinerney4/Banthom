@@ -5,7 +5,7 @@ import { PriceChart, OrderLadder } from '../charts/charts.jsx';
 import { useMedia, go } from '../lib/hooks.js';
 import { fmtCentsAuto, fmtCents, fmtDate, fmtDateShort, fmtDateTimeShort, fmtTimeSec, fmtAge, fmtAgeLong, fmtInt, fmtChance, fmtVolume, fmtPP, cx, isNum, pluralize } from '../lib/format.js';
 import { useTitle, SortHeader, rowKeyNav } from './kit.jsx';
-import { LIVE_VENUES, usePolled, useRealNow, liveFreshness, midOf2, change24, API2, eventHref, marketHref, compareHref, venueName, slugOf, buildSeries } from '../data/live.js';
+import { LIVE_VENUES, usePolled, useRealNow, liveFreshness, midOf2, change24, API2, eventHref, marketHref, compareHref, venueName, slugOf, buildSeries, categoryCrumbs } from '../data/live.js';
 import { StarButton, WatchMenu, usePageCrumbs } from './kit.jsx';
 import { AlertEditor } from './Alerts.jsx';
 
@@ -223,8 +223,7 @@ export function MarketPage({ venue, ticker }) {
   const multi = !!(data && data.siblings.length > 0);
   const evLink = ev ? eventHref(venue, ev.ticker) : null;
   const crumbs = m ? [
-    { label: 'Markets', href: '#app-markets' },
-    ...(data.category ? [{ label: data.category, href: `#app-markets-${slugOf(data.category)}` }] : []),
+    ...categoryCrumbs(data.category),
     ...(multi && evLink ? [{ label: title, href: evLink }, { label: m.label }] : [{ label: title }]),
   ] : null;
   usePageCrumbs(crumbs);

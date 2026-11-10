@@ -15,6 +15,7 @@ export const NAV_MAIN = [
   { id: 'dashboard', label: 'Overview', icon: 'layout-dashboard', href: '#app-dashboard' },
   { id: 'markets', label: 'Markets', icon: 'list-filter', href: '#app-markets' },
   ...(BOTH ? [{ id: 'compare', label: 'Compare', icon: 'git-compare-arrows', href: '#app-compare' }] : []),
+  { id: 'sports', label: 'Sports', icon: 'trophy', href: '#app-sports' },
   { id: 'watchlists', label: 'Watchlists', icon: 'star', href: '#app-watchlists' },
   { id: 'alerts', label: 'Alerts', icon: 'bell', href: '#app-alerts' },
 ];
@@ -181,8 +182,8 @@ export function Topbar({ crumbs, mode, onMenu, onSearch }) {
 const TABS = [
   ['dashboard', 'Home', 'layout-dashboard', '#app-dashboard'],
   ['markets', 'Markets', 'list-filter', '#app-markets'],
-  ...(BOTH ? [['compare', 'Compare', 'git-compare-arrows', '#app-compare']] : []),
-  ['watchlists', 'Watchlists', 'star', '#app-watchlists'],
+  ['sports', 'Sports', 'trophy', '#app-sports'],
+  ...(BOTH ? [['compare', 'Compare', 'git-compare-arrows', '#app-compare']] : [['watchlists', 'Watchlists', 'star', '#app-watchlists']]),
 ];
 const TAB_IDS = TABS.map((t) => t[0]);
 
@@ -241,6 +242,7 @@ const VIEWS = [
   { label: 'My markets', href: '#app-markets', icon: 'star', view: 'watchlist' },
 ];
 const CATS = Object.keys(CATEGORY_ICON).map((c) => ({ label: c, slug: slugOf(c), icon: CATEGORY_ICON[c] }));
+const catHref = (c) => (c.label === 'Sports' ? '#app-sports-markets' : `#app-markets-${c.slug}`);
 const norm = (s) => s.toLowerCase().normalize('NFKD').replace(/[^\w\s.%-]/g, ' ');
 
 // "venue:kalshi cat:politics fed" -> filters plus free text.
@@ -281,7 +283,7 @@ export function CommandPalette({ open, onClose, onView }) {
   const groups = [
     ['Markets', markets.map((r) => ({ key: r.id, label: rowName(r), venue: r.venue, meta: fmtCentsAuto(r.mid), href: marketHref(r.id) }))],
     ['Events', events.map((r) => ({ key: `${r.venue}:${r.event}`, label: r.eventTitle, venue: r.venue, meta: 'Event', href: eventHref(r.venue, r.event) }))],
-    ['Categories', terms.length ? CATS.filter((c) => hit(c.label)).slice(0, 4).map((c) => ({ key: c.slug, label: c.label, icon: c.icon, href: `#app-markets-${c.slug}` })) : []],
+    ['Categories', terms.length ? CATS.filter((c) => hit(c.label)).slice(0, 4).map((c) => ({ key: c.slug, label: c.label, icon: c.icon, href: catHref(c) })) : []],
     ['Views', terms.length ? VIEWS.filter((v) => hit(v.label)).map((v) => ({ key: v.label, label: v.label, icon: v.icon, href: v.href, view: v.view })) : []],
     ['Pages', (terms.length ? PAGES.filter((p) => hit(p.label)) : PAGES.slice(0, 5)).map((p) => ({ key: p.label, label: p.label, icon: p.icon, href: p.href }))],
     ['Help', terms.length ? HELP.filter((h) => hit(h.label)).map((h) => ({ key: h.label, label: h.label, icon: h.icon, href: h.href })) : []],

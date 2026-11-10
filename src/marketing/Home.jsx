@@ -31,7 +31,7 @@ const inBand = (r) => isNum(r.mid) && r.mid >= 8 && r.mid <= 92;
 
 // One overview poll for the page, the market featured in the hero (fixed once chosen) and the most active pair.
 function useHomeData() {
-  const { data: ov } = usePolled(LIVE ? API2.overview : null, 120000);
+  const { data: ov } = usePolled(LIVE ? API2.overviewFor('main') : null, 120000);
   const [pick, setPick] = useState(null);
   useEffect(() => {
     if (pick || !ov || !ov.active.length) return;
@@ -39,7 +39,7 @@ function useHomeData() {
   }, [ov, pick]);
   const hero = pick && ov ? ov.active.find((r) => r.id === pick.id) || pick : pick;
   const { data: hist } = usePolled(pick ? LIVE_VENUES[pick.venue].api.history(pick.ticker, '1W') : null, 300000);
-  const { data: pm } = usePolled(LIVE && BOTH ? API2.matches({ sort: 'activity', limit: 1 }) : null, 300000);
+  const { data: pm } = usePolled(LIVE && BOTH ? API2.matches({ sort: 'activity', limit: 1, scope: 'main' }) : null, 300000);
   const pair = pm && pm.pairs && pm.pairs[0] ? pm.pairs[0] : null;
   return { ov, hero, hist, pair };
 }
@@ -363,7 +363,7 @@ export function Home() {
             ['list-filter', 'Every open market', ov ? `${fmtInt(ov.total)} markets from Kalshi and Polymarket, refreshed every few minutes.` : 'Every open Kalshi and Polymarket market, refreshed every few minutes.'],
             ['activity', 'Quotes', 'Bid, ask, last and spread, each with its venue and the time it was fetched.'],
             ['git-compare-arrows', 'Compare', 'The same question on both venues, side by side, with the price gap.'],
-            ['bell', 'Watchlists and alerts', 'Saved in your browser. Alerts on the thresholds you set.'],
+            ['trophy', 'Banthom Sports', 'Games, futures and props from both venues in their own section.'],
           ].map(([icon, title, desc]) => (
             <div key={title} className="coverage-item">
               <Icon n={icon} size={22} />

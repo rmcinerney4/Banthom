@@ -176,7 +176,10 @@ async function route(req, res) {
   // ---- Cross-venue API
   if (p === '/api/status') return json(req, res, 200, { venues: hub.venueStatus(), pairs: matcher ? matcher.status() : null });
   if (p === '/api/markets') return sendCached(req, res, hub.marketsQuery(url.searchParams));
-  if (p === '/api/overview') return sendCached(req, res, { body: hub.overview(), etag: `"o${hub.version()}"` });
+  if (p === '/api/overview') {
+    const scope = hub.scopeOf(url.searchParams.get('scope'));
+    return sendCached(req, res, { body: hub.overview(scope), etag: `"o${scope || 'all'}${hub.version()}"` });
+  }
   if (p === '/api/quotes') return json(req, res, 200, hub.quotes(url.searchParams));
   if (p === '/api/matches') return json(req, res, 200, hub.matchesList(url.searchParams));
   let m = p.match(/^\/api\/matches\/([A-Za-z0-9_-]{1,64})$/);

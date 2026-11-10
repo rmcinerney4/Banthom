@@ -67,3 +67,9 @@
 .rv-keys { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
 .rv-rules { max-height: 420px; overflow-y: auto; }
 @media (max-width: 1023px) { .rv-list { max-height: 240px; } .rv-keys { display: none; } }
+
+/* Banthom Sports section tabs */
+.sports-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
+.sports-tab { padding: 8px 14px; color: var(--text-2); text-decoration: none; font-weight: 500; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.sports-tab:hover { color: var(--text); }
+.sports-tab.is-active { color: var(--text); border-bottom-color: var(--accent); }

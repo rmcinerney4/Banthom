@@ -158,6 +158,7 @@ export const venueRecent = (k) => ((LIVE_VENUES[k] && LIVE_VENUES[k].cfg.recentS
 export const API2 = {
   markets: (p) => `/api/markets?${new URLSearchParams(Object.entries(p).filter(([, v]) => v != null && v !== '' && v !== 'all'))}`,
   overview: '/api/overview',
+  overviewFor: (scope) => `/api/overview${scope ? `?scope=${scope}` : ''}`,
   status: '/api/status',
   // At most 200 ids per request, which keeps the URL well under server header limits.
   quotes: (ids) => (ids && ids.length ? `/api/quotes?ids=${ids.slice(0, 200).map((x) => encodeURIComponent(x)).join(',')}` : null),
@@ -189,4 +190,10 @@ export const CATEGORY_ICON = {
   Geopolitics: 'globe', Crypto: 'bitcoin', 'Science & Tech': 'cpu', 'Climate & Weather': 'cloud-sun', Health: 'heart-pulse',
   Culture: 'clapperboard', Sports: 'trophy', Mentions: 'megaphone', Transportation: 'plane', Other: 'layers',
 };
-export const NAV_CATEGORIES = ['Politics', 'Elections', 'Economics', 'Finance', 'Geopolitics', 'Crypto', 'Sports', 'Science & Tech', 'Climate & Weather', 'Culture'];
+// Sports has its own section (Banthom Sports), so it isn't listed with the other categories.
+export const NAV_CATEGORIES = ['Politics', 'Elections', 'Economics', 'Finance', 'Geopolitics', 'Crypto', 'Science & Tech', 'Climate & Weather', 'Culture'];
+export const isSports = (category) => category === 'Sports';
+// Breadcrumb trail for a market's or event's category.
+export const categoryCrumbs = (category) => (isSports(category)
+  ? [{ label: 'Sports', href: '#app-sports' }, { label: 'Markets', href: '#app-sports-markets' }]
+  : [{ label: 'Markets', href: '#app-markets' }, ...(category ? [{ label: category, href: `#app-markets-${slugOf(category)}` }] : [])]);

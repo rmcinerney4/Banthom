@@ -30,6 +30,9 @@ export function parseApp(hash) {
     const v = h.slice(10);
     return LIVE_VENUES[v] ? { page: 'markets', nav: `v-${v}`, venue: v } : { page: 'missing', nav: null };
   }
+  if (h === 'markets-sports' || h === 'sports-markets') return { page: 'sports-markets', nav: 'sports' };
+  if (h === 'sports') return { page: 'sports', nav: 'sports' };
+  if (h === 'sports-compare') return { page: 'sports-compare', nav: 'sports' };
   if (h.startsWith('markets-')) return { page: 'markets', nav: `cat-${h.slice(8)}`, category: h.slice(8) };
   const m = h.match(VENUE_PAGE);
   if (m) return { page: m[1], nav: 'markets', venue: m[2], id: m[3] };
@@ -53,6 +56,9 @@ export function parseApp(hash) {
 function crumbsFor(r) {
   switch (r.page) {
     case 'dashboard': return [{ label: 'Overview' }];
+    case 'sports': return [{ label: 'Sports' }];
+    case 'sports-markets': return [{ label: 'Sports', href: '#app-sports' }, { label: 'Markets' }];
+    case 'sports-compare': return [{ label: 'Sports', href: '#app-sports' }, { label: 'Compare' }];
     case 'markets':
       if (r.venue) return [{ label: 'Markets', href: '#app-markets' }, { label: venueName(r.venue) }];
       return r.category ? [{ label: 'Markets', href: '#app-markets' }, { label: CATEGORY_BY_SLUG[r.category] || r.category }] : [{ label: 'Markets' }];
@@ -102,6 +108,9 @@ export function Terminal({ hash }) {
   else {
     switch (route.page) {
       case 'dashboard': page = <Dashboard />; break;
+      case 'sports': page = <Dashboard key="sports" scope="sports" />; break;
+      case 'sports-markets': page = <Explorer key="sports" scope="sports" viewRequest={viewReq} />; break;
+      case 'sports-compare': page = <CompareList key="sports" scope="sports" />; break;
       case 'markets': page = <Explorer category={route.category} venue={route.venue} viewRequest={viewReq} />; break;
       case 'market': page = LIVE_VENUES[route.venue].enabled ? <MarketPage key={`${route.venue}-${route.id}`} venue={route.venue} ticker={route.id} /> : <LiveOff name={venueName(route.venue)} />; break;
       case 'event': page = LIVE_VENUES[route.venue].enabled ? <EventPage key={`${route.venue}-${route.id}`} venue={route.venue} id={route.id} /> : <LiveOff name={venueName(route.venue)} />; break;

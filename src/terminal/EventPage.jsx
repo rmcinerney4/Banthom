@@ -2,7 +2,7 @@
 import React from 'react';
 import { Icon, Button, Badge, Panel, PageHeader, EmptyState, Skeleton, KeyValue, VenueBadge } from '../ui/core.jsx';
 import { fmtCentsAuto, fmtDate, fmtTimeSec, pluralize, isNum } from '../lib/format.js';
-import { usePolled, API2, LIVE_VENUES, compareHref, venueName, slugOf } from '../data/live.js';
+import { usePolled, API2, LIVE_VENUES, compareHref, venueName, slugOf, categoryCrumbs } from '../data/live.js';
 import { useTitle, MarketList, FeedBanners, Fresh, useSorted, usePageCrumbs } from './kit.jsx';
 
 const { useState } = React;
@@ -15,7 +15,7 @@ export function EventPage({ venue, id }) {
   const def = ev && ev.exclusive ? { key: 'mid', dir: 'desc' } : { key: 'closes', dir: 'asc' };
   const rows = useSorted(data ? data.markets : [], sort || def);
   useTitle(ev ? ev.title : `${v ? v.name : ''} event`);
-  const crumbs = ev ? [{ label: 'Markets', href: '#app-markets' }, { label: ev.category, href: `#app-markets-${slugOf(ev.category)}` }, { label: ev.title }] : null;
+  const crumbs = ev ? [...categoryCrumbs(ev.category), { label: ev.title }] : null;
   usePageCrumbs(crumbs);
 
   if (!v) return <EmptyState title="Unknown venue">This link doesn’t point to Kalshi or Polymarket.</EmptyState>;
