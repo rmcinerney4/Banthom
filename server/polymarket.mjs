@@ -7,6 +7,8 @@
 // Polymarket prices are USDC per share, 0–1. Everything here is converted to cents so the
 // pages read the same as Kalshi's. A missing bid or ask stays null and is never filled in.
 
+import { buildIndex, runQuery, byActivity, mem } from './list-index.mjs';
+
 const env = process.env;
 const GAMMA = (env.POLYMARKET_GAMMA_BASE || 'https://gamma-api.polymarket.com').replace(/\/+$/, '');
 const CLOB = (env.POLYMARKET_CLOB_BASE || 'https://clob.polymarket.com').replace(/\/+$/, '');
@@ -139,14 +141,12 @@ function compactMarket(m, observedAt) {
   };
 }
 const mid2 = (b, a) => (b != null && a != null ? (b + a) / 2 : null);
-const byActivity = (a, b) => (b.vol24 ?? 0) - (a.vol24 ?? 0) || a.ticker.localeCompare(b.ticker);
 
 // ---------------------------------------------------------------- Collector
 const state = {
   startedAt: Date.now(),
   events: new Map(),
   markets: new Map(),
-  tokens: new Map(), // market id -> [yesToken, noToken]
   byEvent: new Map(),
   lastPassAt: null,
   lastSuccessAt: null,
@@ -161,9 +161,11 @@ function noteError(err, phase) {
   console.warn(`[polymarket] ${phase} failed: ${state.lastError.message}`);
 }
 
+// Updates the snapshot in place (no second copy during a pass). Keyset paging is sequential.
 async function runPass() {
   const t0 = Date.now();
-  const next = { events: new Map(), markets: new Map(), tokens: new Map(), byEvent: new Map() };
+  const seen = new Set();
+  const byEvent = new Map();
   let cursor = '';
   let pages = 0;
   do {
@@ -172,20 +174,26 @@ async function runPass() {
     for (const m of data.markets || []) {
       if (!m || m.id == null || !isOpen(m)) continue;
       const c = compactMarket(m, at);
-      const p = mid2(c.bid, c.ask);
-      next.markets.set(c.ticker, { ...c, mid: p });
-      next.tokens.set(c.ticker, tokensOf(m));
+      c.mid = mid2(c.bid, c.ask);
+      const cur = state.markets.get(c.ticker);
+      if (cur) Object.assign(cur, c); else state.markets.set(c.ticker, c);
+      seen.add(c.ticker);
       const ev = eventOf(m);
-      if (!next.events.has(ev.ticker)) next.events.set(ev.ticker, ev);
-      const list = next.byEvent.get(ev.ticker);
-      if (list) list.push(c.ticker); else next.byEvent.set(ev.ticker, [c.ticker]);
+      const curE = state.events.get(ev.ticker);
+      if (!curE) state.events.set(ev.ticker, ev);
+      else if (!byEvent.has(ev.ticker)) Object.assign(curE, ev);
+      const list = byEvent.get(ev.ticker);
+      if (list) list.push(c.ticker); else byEvent.set(ev.ticker, [c.ticker]);
     }
     cursor = data.next_cursor || '';
     pages++;
   } while (cursor && pages < 5000);
+  // Full pass completed: drop markets and events that are no longer open.
+  for (const t of state.markets.keys()) if (!seen.has(t)) state.markets.delete(t);
+  for (const t of state.events.keys()) if (!byEvent.has(t)) state.events.delete(t);
   const done = Date.now();
-  Object.assign(state, next, { index: null, lastPassAt: done, lastSuccessAt: done, lastPassMs: done - t0, lastError: null });
-  console.log(`[polymarket] ${next.markets.size} markets in ${next.events.size} events (${pages} pages) in ${((done - t0) / 1000).toFixed(1)}s`);
+  Object.assign(state, { byEvent, index: null, lastPassAt: done, lastSuccessAt: done, lastPassMs: done - t0, lastError: null });
+  console.log(`[polymarket] ${state.markets.size} markets in ${state.events.size} events (${pages} pages) in ${((done - t0) / 1000).toFixed(1)}s · ${mem()}`);
 }
 
 let started = false;
@@ -234,63 +242,14 @@ export function status() {
 }
 
 // ---------------------------------------------------------------- List queries
-function index() {
-  if (state.index) return state.index;
-  const rows = [];
-  const cats = new Map();
-  for (const m of state.markets.values()) {
-    const e = state.events.get(m.event);
-    const category = (e && e.category) || 'Other';
-    cats.set(category, (cats.get(category) || 0) + 1);
-    const title = e ? e.title : m.label;
-    rows.push({ m, category, sortTitle: `${title} ${m.label}`.toLowerCase(),
-      hay: `${title} ${e ? e.sub : ''} ${m.label} ${m.ticker} ${e ? e.slug : ''} ${category}`.toLowerCase() });
-  }
-  rows.sort((a, b) => byActivity(a.m, b.m));
-  state.index = { rows, categories: [...cats.entries()].sort((a, b) => b[1] - a[1]), version: `${state.lastPassAt || 0}-${state.consecutiveFailures}`, results: new Map() };
-  return state.index;
-}
-
-const SORTS = new Set(['title', 'bid', 'ask', 'mid', 'ch24', 'vol24', 'oi', 'closes']);
 const clean = (m) => { const { mid, ...rest } = m; return rest; };
 
 export function listQuery(params) {
-  const idx = index();
-  const q = String(params.get('q') || '').trim().toLowerCase().slice(0, 120);
-  const category = String(params.get('category') || 'all');
-  const sort = SORTS.has(params.get('sort')) ? params.get('sort') : 'vol24';
-  const dir = params.get('dir') === 'asc' ? 'asc' : 'desc';
-  const offset = int(params.get('offset'), 0, 0, 1e7);
-  const limit = int(params.get('limit'), 50, 1, 500);
-  const key = JSON.stringify([q, category, sort, dir, offset, limit]);
-  const etag = `"p${idx.version}-${Buffer.from(key).toString('base64url').slice(0, 60)}"`;
-  const hit = idx.results.get(key);
-  if (hit) return { body: hit, etag };
-  const terms = q.split(/\s+/).filter(Boolean);
-  let rows = idx.rows.filter((r) => (category === 'all' || r.category === category) && terms.every((t) => r.hay.includes(t)));
-  if (sort !== 'vol24' || dir !== 'desc') {
-    const mul = dir === 'asc' ? 1 : -1;
-    const val = (r) => (sort === 'title' ? r.sortTitle : r.m[sort]);
-    rows = [...rows].sort((a, b) => {
-      const va = val(a);
-      const vb = val(b);
-      if (va == null && vb == null) return 0;
-      if (va == null) return 1;
-      if (vb == null) return -1;
-      return (typeof va === 'string' ? va.localeCompare(vb) : va - vb) * mul;
-    });
-  }
-  const page = rows.slice(offset, offset + limit);
-  const events = {};
-  for (const r of page) {
-    if (events[r.m.event]) continue;
-    const e = state.events.get(r.m.event);
-    if (e) events[r.m.event] = { title: e.title, sub: e.sub, category: e.category, slug: e.slug, exclusive: e.exclusive, markets: (state.byEvent.get(r.m.event) || []).length };
-  }
-  const body = JSON.stringify({ status: status(), total: idx.rows.length, matched: rows.length, offset, limit, categories: idx.categories, events, markets: page.map((r) => clean(r.m)) });
-  if (idx.results.size > 200) idx.results.clear();
-  idx.results.set(key, body);
-  return { body, etag };
+  if (!state.index) state.index = buildIndex(state.markets, state.events, `${state.lastPassAt || 0}-${state.consecutiveFailures}`);
+  return runQuery(state.index, params, {
+    tag: 'p', events: state.events, byEvent: state.byEvent, status, clean,
+    eventInfo: (e) => ({ title: e.title, sub: e.sub, category: e.category, slug: e.slug, exclusive: e.exclusive }),
+  });
 }
 
 // ---------------------------------------------------------------- On-demand detail
@@ -367,9 +326,8 @@ export async function marketDetail(id) {
   };
 }
 
+// Token ids are long; they're read from the (cached) market instead of being kept for every market.
 async function yesToken(id) {
-  const known = state.tokens.get(id);
-  if (known && known[0]) return known[0];
   const m = await loadMarket(id);
   const t = tokensOf(m)[0];
   if (!t) throw new HttpError(404, 'No order book for this market');

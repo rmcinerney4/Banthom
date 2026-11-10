@@ -8,7 +8,7 @@
   "scripts": {
     "build": "node build/build.mjs --min",
     "build:dev": "node build/build.mjs",
-    "start": "node server.mjs",
+    "start": "node --max-old-space-size=640 server.mjs",
     "icons": "node build/gen-icons.cjs"
   },
   "dependencies": {

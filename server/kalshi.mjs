@@ -8,6 +8,8 @@
 // ("13.00"). Everything here is converted to US cents and plain numbers. A missing bid or
 // ask stays null and is never filled in.
 
+import { buildIndex, runQuery, byActivity, mem } from './list-index.mjs';
+
 const env = process.env;
 const BASE = (env.KALSHI_API_BASE || 'https://external-api.kalshi.com/trade-api/v2').replace(/\/+$/, '');
 const int = (v, d, lo, hi) => {
@@ -175,7 +177,6 @@ const withDerived = (c) => {
   const prev = mid2(c.prevBid, c.prevAsk);
   return { ...c, mid: now, ch24: now != null && prev != null ? Math.round((now - prev) * 10) / 10 : null };
 };
-const byActivity = (a, b) => (b.vol24 ?? 0) - (a.vol24 ?? 0) || (b.oi ?? 0) - (a.oi ?? 0) || a.ticker.localeCompare(b.ticker);
 
 // ---------------------------------------------------------------- Collector
 const state = {
@@ -226,17 +227,7 @@ async function listOpenEvents() {
   return out;
 }
 
-function carryOver(t, next) {
-  const ev = state.events.get(t);
-  const tickers = state.byEvent.get(t);
-  if (!ev || !tickers) return;
-  next.events.set(t, ev);
-  next.byEvent.set(t, tickers);
-  for (const m of tickers) {
-    if (state.markets.has(m)) next.markets.set(m, state.markets.get(m));
-  }
-}
-
+// Updates the snapshot in place (no second copy during a pass), three requests at a time.
 async function runPass() {
   const t0 = Date.now();
   if (!state.series.size || t0 - state.seriesAt > SERIES_TTL) {
@@ -244,33 +235,54 @@ async function runPass() {
   }
   const open = await listOpenEvents();
   const keep = open.filter(inScope);
-  const next = { events: new Map(), markets: new Map(), byEvent: new Map() };
+  const batches = [];
+  for (let i = 0; i < keep.length; i += BATCH) batches.push(keep.slice(i, i + BATCH));
+  const seen = new Set();
+  const seenEvents = new Set();
+  const failedEvents = new Set();
   let failed = 0;
-  for (let i = 0; i < keep.length; i += BATCH) {
-    const batch = keep.slice(i, i + BATCH);
-    try {
-      const data = await getJSON('/events', { tickers: batch.map((e) => e.event_ticker).join(','), with_nested_markets: 'true', limit: BATCH });
-      const at = Date.now();
-      for (const e of data.events || []) {
-        const ev = compactEvent(e);
-        const tickers = [];
-        for (const m of e.markets || []) {
-          if (!ACTIVE.has(m.status)) continue;
-          next.markets.set(m.ticker, withDerived(compactOf(detailMarket(m, at))));
-          tickers.push(m.ticker);
+  let nextBatch = 0;
+  const worker = async () => {
+    while (nextBatch < batches.length) {
+      const batch = batches[nextBatch++];
+      try {
+        const data = await getJSON('/events', { tickers: batch.map((e) => e.event_ticker).join(','), with_nested_markets: 'true', limit: BATCH });
+        const at = Date.now();
+        for (const e of data.events || []) {
+          const ev = compactEvent(e);
+          const tickers = [];
+          for (const m of e.markets || []) {
+            if (!ACTIVE.has(m.status)) continue;
+            const fresh = withDerived(compactOf(detailMarket(m, at)));
+            const cur = state.markets.get(m.ticker);
+            if (cur) Object.assign(cur, fresh); else state.markets.set(m.ticker, fresh);
+            seen.add(m.ticker);
+            tickers.push(m.ticker);
+          }
+          if (tickers.length) {
+            const curE = state.events.get(ev.ticker);
+            if (curE) Object.assign(curE, ev); else state.events.set(ev.ticker, ev);
+            state.byEvent.set(ev.ticker, tickers);
+            seenEvents.add(ev.ticker);
+          }
         }
-        if (tickers.length) { next.events.set(ev.ticker, ev); next.byEvent.set(ev.ticker, tickers); }
+      } catch (err) {
+        failed++;
+        noteError(err, 'markets');
+        for (const e of batch) failedEvents.add(e.event_ticker);
       }
-    } catch (err) {
-      failed++;
-      noteError(err, 'markets');
-      for (const e of batch) carryOver(e.event_ticker, next);
     }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  // Drop markets and events that are no longer open. Ones from failed batches are kept and age into Delayed.
+  for (const [t, m] of state.markets) if (!seen.has(t) && !failedEvents.has(m.event)) state.markets.delete(t);
+  for (const t of [...state.events.keys()]) {
+    if (!seenEvents.has(t) && !failedEvents.has(t)) { state.events.delete(t); state.byEvent.delete(t); }
   }
   const done = Date.now();
-  Object.assign(state, next, { index: null, lastPassAt: done, lastPassMs: done - t0, eventsSeen: open.length, failedBatches: failed });
+  Object.assign(state, { index: null, lastPassAt: done, lastPassMs: done - t0, eventsSeen: open.length, failedBatches: failed });
   if (!failed) { state.lastSuccessAt = done; state.lastError = null; }
-  console.log(`[kalshi] ${next.markets.size} markets in ${next.events.size} events (${keep.length} of ${open.length} open events in scope) in ${((done - t0) / 1000).toFixed(1)}s${failed ? `; ${failed} batch(es) failed` : ''}`);
+  console.log(`[kalshi] ${state.markets.size} markets in ${state.events.size} events (${keep.length} of ${open.length} open events in scope) in ${((done - t0) / 1000).toFixed(1)}s${failed ? `; ${failed} batch(es) failed` : ''} · ${mem()}`);
 }
 
 let started = false;
@@ -320,74 +332,14 @@ export function status() {
 }
 
 // Search, filter, sort and page on the server: the full set is too big to send to browsers.
-// The index is rebuilt once per collector pass; query results are cached until the next pass.
-function index() {
-  if (state.index) return state.index;
-  const rows = [];
-  const cats = new Map();
-  for (const m of state.markets.values()) {
-    const e = state.events.get(m.event);
-    const category = (e && e.category) || 'Other';
-    cats.set(category, (cats.get(category) || 0) + 1);
-    const title = e ? e.title : m.event;
-    rows.push({ m, category, title, sortTitle: `${title} ${m.label}`.toLowerCase(),
-      hay: `${title} ${e ? e.sub : ''} ${m.label} ${m.ticker} ${m.event} ${category}`.toLowerCase() });
-  }
-  rows.sort((a, b) => byActivity(a.m, b.m));
-  state.index = {
-    rows,
-    categories: [...cats.entries()].sort((a, b) => b[1] - a[1]),
-    version: `${state.lastPassAt || 0}-${state.consecutiveFailures}`,
-    results: new Map(),
-  };
-  return state.index;
-}
-
-const SORTS = new Set(['title', 'bid', 'ask', 'mid', 'ch24', 'vol24', 'oi', 'closes']);
 const clean = (m) => { const { mid, ch24, ...rest } = m; return rest; };
 
 export function listQuery(params) {
-  const idx = index();
-  const q = String(params.get('q') || '').trim().toLowerCase().slice(0, 120);
-  const category = String(params.get('category') || 'all');
-  const sort = SORTS.has(params.get('sort')) ? params.get('sort') : 'vol24';
-  const dir = params.get('dir') === 'asc' ? 'asc' : 'desc';
-  const offset = int(params.get('offset'), 0, 0, 1e7);
-  const limit = int(params.get('limit'), 50, 1, 500);
-  const key = JSON.stringify([q, category, sort, dir, offset, limit]);
-  const etag = `"k${idx.version}-${Buffer.from(key).toString('base64url').slice(0, 60)}"`;
-  const hit = idx.results.get(key);
-  if (hit) return { body: hit, etag };
-
-  const terms = q.split(/\s+/).filter(Boolean);
-  let rows = idx.rows.filter((r) => (category === 'all' || r.category === category) && terms.every((t) => r.hay.includes(t)));
-  if (sort !== 'vol24' || dir !== 'desc') {
-    const k = sort;
-    const mul = dir === 'asc' ? 1 : -1;
-    const val = (r) => (k === 'title' ? r.sortTitle : r.m[k]);
-    rows = [...rows].sort((a, b) => {
-      const va = val(a);
-      const vb = val(b);
-      if (va == null && vb == null) return 0;
-      if (va == null) return 1;
-      if (vb == null) return -1;
-      return (typeof va === 'string' ? va.localeCompare(vb) : va - vb) * mul;
-    });
-  }
-  const page = rows.slice(offset, offset + limit);
-  const events = {};
-  for (const r of page) {
-    if (events[r.m.event]) continue;
-    const e = state.events.get(r.m.event);
-    if (e) events[r.m.event] = { title: e.title, sub: e.sub, category: e.category, series: e.series, exclusive: e.exclusive, markets: (state.byEvent.get(r.m.event) || []).length };
-  }
-  const body = JSON.stringify({
-    status: status(), total: idx.rows.length, matched: rows.length, offset, limit,
-    categories: idx.categories, events, markets: page.map((r) => clean(r.m)),
+  if (!state.index) state.index = buildIndex(state.markets, state.events, `${state.lastPassAt || 0}-${state.consecutiveFailures}`);
+  return runQuery(state.index, params, {
+    tag: 'k', events: state.events, byEvent: state.byEvent, status, clean,
+    eventInfo: (e) => ({ title: e.title, sub: e.sub, category: e.category, series: e.series, exclusive: e.exclusive }),
   });
-  if (idx.results.size > 200) idx.results.clear();
-  idx.results.set(key, body);
-  return { body, etag };
 }
 
 // ---------------------------------------------------------------- On-demand detail

@@ -57,6 +57,14 @@ own resolution text.
   separate venue with its own approved-member API and is not connected.
 - `POLYMARKET_ENABLED=false` turns it off. API: `/api/polymarket/…` with the same routes as Kalshi.
 
+## Memory
+
+Both collectors update their snapshot in place and keep only the fields the pages need. A local
+test at production scale (160,000 Kalshi and 200,000 Polymarket markets, both refreshing, lists
+being queried) peaked at about 400 MB RSS. `npm start` lets Node's heap grow to 640 MB, which fits
+Railway's 1 GB per-service limit; raise both together if the venues grow a lot. Each collector
+logs heap and RSS after every pass.
+
 ## Deploy (Railway)
 
 Railway builds this repo with its default builder (Railpack) and needs no config file: it runs
