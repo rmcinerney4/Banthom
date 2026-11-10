@@ -33,6 +33,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // ---------------------------------------------------------------- Requests
 // Two lanes keep Banthom well under Kalshi's basic read budget (about 20 requests a second):
 // the collector runs one request at a time, page views get their own small lane.
+// Kalshi answers bursts of public requests with 429, so every lane slows to a quarter of its
+// pace for a minute after any 429 (and honours Retry-After when Kalshi sends it).
+let slowUntil = 0;
 function lane(spacingMs, concurrency) {
   let active = 0;
   let last = 0;
@@ -41,7 +44,7 @@ function lane(spacingMs, concurrency) {
   const pump = () => {
     timer = null;
     while (active < concurrency && queue.length) {
-      const wait = last + spacingMs - Date.now();
+      const wait = last + (Date.now() < slowUntil ? spacingMs * 4 : spacingMs) - Date.now();
       if (wait > 0) { timer = setTimeout(pump, wait); return; }
       last = Date.now();
       const job = queue.shift();
@@ -54,8 +57,8 @@ function lane(spacingMs, concurrency) {
     if (!timer) pump();
   });
 }
-const background = lane(100, 3);
-const interactive = lane(40, 4);
+const background = lane(200, 2);
+const interactive = lane(60, 3);
 
 export class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
@@ -73,7 +76,13 @@ async function getJSON(path, params, run = background) {
           const res = await fetch(url, { headers: { accept: 'application/json', 'user-agent': UA }, signal: ctrl.signal });
           if (!res.ok) {
             const text = await res.text().catch(() => '');
-            throw new HttpError(res.status, `Kalshi ${res.status} on ${path}${text ? `: ${text.slice(0, 160)}` : ''}`);
+            const err = new HttpError(res.status, `Kalshi ${res.status} on ${path}${text ? `: ${text.slice(0, 160)}` : ''}`);
+            if (res.status === 429) {
+              const ra = Number(res.headers.get('retry-after'));
+              err.retryAfter = Number.isFinite(ra) && ra > 0 ? Math.min(ra, 60) * 1000 : 0;
+              slowUntil = Date.now() + 60000;
+            }
+            throw err;
           }
           return await res.json();
         } finally {
@@ -81,9 +90,11 @@ async function getJSON(path, params, run = background) {
         }
       });
     } catch (err) {
-      const retry = !(err instanceof HttpError) || err.status === 429 || err.status >= 500;
-      if (!retry || attempt >= 3) throw err;
-      await sleep(1000 * 2 ** attempt + Math.random() * 400);
+      const limited = err instanceof HttpError && err.status === 429;
+      const retry = !(err instanceof HttpError) || limited || err.status >= 500;
+      if (!retry || attempt >= (limited ? 5 : 3)) throw err;
+      const backoff = limited ? Math.max(err.retryAfter || 0, 2000 * 2 ** attempt) : 1000 * 2 ** attempt;
+      await sleep(Math.min(backoff, 30000) + Math.random() * 400);
     }
   }
 }
@@ -227,7 +238,7 @@ async function listOpenEvents() {
   return out;
 }
 
-// Updates the snapshot in place (no second copy during a pass), three requests at a time.
+// Updates the snapshot in place (no second copy during a pass), two requests at a time.
 async function runPass() {
   const t0 = Date.now();
   if (!state.series.size || t0 - state.seriesAt > SERIES_TTL) {
@@ -273,7 +284,7 @@ async function runPass() {
       }
     }
   };
-  await Promise.all([worker(), worker(), worker()]);
+  await Promise.all([worker(), worker()]);
   // Drop markets and events that are no longer open. Ones from failed batches are kept and age into Delayed.
   for (const [t, m] of state.markets) if (!seen.has(t) && !failedEvents.has(m.event)) state.markets.delete(t);
   for (const t of [...state.events.keys()]) {
@@ -281,7 +292,10 @@ async function runPass() {
   }
   const done = Date.now();
   Object.assign(state, { index: null, lastPassAt: done, lastPassMs: done - t0, eventsSeen: open.length, failedBatches: failed });
-  if (!failed) { state.lastSuccessAt = done; state.lastError = null; }
+  // A pass counts as successful if almost every batch came back; markets from failed batches keep
+  // their own (older) fetch times and age into Delayed on their own.
+  if (failed <= Math.floor(batches.length * 0.05)) state.lastSuccessAt = done;
+  if (!failed) state.lastError = null;
   console.log(`[kalshi] ${state.markets.size} markets in ${state.events.size} events (${keep.length} of ${open.length} open events in scope) in ${((done - t0) / 1000).toFixed(1)}s${failed ? `; ${failed} batch(es) failed` : ''} · ${mem()}`);
 }
 
